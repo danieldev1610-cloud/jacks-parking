@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "jacks-parking",
+    "slug": "snack-fc8b7f8c-311a-47e1-ba7c-4e879b5fe1a8",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "description": "KEKKEKRERKESFSdbGFSYEDGFUYSDigfSIYFGAISUDVHCXIZUKXVJSDCZNo description"
+  }
+}
