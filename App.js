@@ -6,12 +6,13 @@ import {
   StyleSheet,
   Image,
   TouchableOpacity,
-  Alert,
+  Alert as RNAlert,
   Modal,
   TouchableWithoutFeedback,
   ScrollView,
   Dimensions,
   Animated,
+  Platform,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -29,71 +30,107 @@ const supabaseHeaders = {
 };
 // =====================================
 
-// Configureer notificaties
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// ---------- Helpers: web-safe alerts & confirms ----------
+const isWeb = Platform.OS === 'web';
 
-// Vraag toestemming voor notificaties
-const setupNotifications = async () => {
-  const { status } = await Notifications.requestPermissionsAsync();
-  if (status !== 'granted') {
-    Alert.alert('Fout', 'Geen toestemming voor notificaties.');
+const Alert = {
+  alert: (title, message = '', buttons) => {
+    if (!isWeb) {
+      return RNAlert.alert(title, message, buttons);
+    }
+    // Web fallback
+    if (Array.isArray(buttons) && buttons.length) {
+      // Als er Ja/Nee knoppen zijn, probeer confirm
+      const yes = buttons.find((b) => b.text?.toLowerCase() === 'ja' || b.onPress);
+      const cancel = buttons.find((b) => (b.style === 'cancel') || (b.text?.toLowerCase() === 'annuleren'));
+      const ok = window.confirm(`${title}\n\n${message}`);
+      if (ok && yes?.onPress) yes.onPress();
+      if (!ok && cancel?.onPress) cancel.onPress();
+      return;
+    }
+    window.alert(`${title}\n\n${message}`);
+  },
+};
+
+// ---------- Notifications: native vs web ----------
+async function setupNotifications() {
+  try {
+    if (isWeb) {
+      // Probeer browser Notifications API; val terug op niets (we gebruiken Alert als fallback bij verzenden)
+      if ('Notification' in window) {
+        if (Notification.permission === 'default') {
+          await Notification.requestPermission();
+        }
+      }
+      return true;
+    } else {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Fout', 'Geen toestemming voor notificaties.');
+        return false;
+      }
+      return true;
+    }
+  } catch (e) {
+    console.log('setupNotifications error', e);
     return false;
   }
-  return true;
-};
+}
 
-// Stuur een notificatie
-const sendNotification = async (title, body) => {
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title,
-      body,
-    },
-    trigger: null, // Direct verzenden
+async function sendNotification(title, body) {
+  try {
+    if (isWeb) {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, { body });
+      } else {
+        // Fallback naar alert op web
+        Alert.alert(title, body);
+      }
+      return;
+    }
+    await Notifications.scheduleNotificationAsync({
+      content: { title, body },
+      trigger: null, // direct
+    });
+  } catch (e) {
+    console.log('sendNotification error', e);
+  }
+}
+
+// Configureer notificaties (native)
+if (!isWeb) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
   });
-};
+}
 
-// Testfunctie om te controleren of een eenvoudige API-aanroep werkt
+// ---------- Test network ----------
 const testNetworkRequest = async () => {
   try {
-    console.log('Testing network with a simple API...');
     const res = await fetch('https://jsonplaceholder.typicode.com/posts/1');
-    if (!res.ok) {
-      console.error('Simple API test failed:', res.status, await res.text());
-      return false;
-    }
-    const data = await res.json();
-    console.log('Simple API test successful:', data);
+    if (!res.ok) return false;
+    await res.json();
     return true;
-  } catch (error) {
-    console.error('Simple API test error:', error.message);
+  } catch {
     return false;
   }
 };
 
-// Testfunctie om te controleren of Supabase bereikbaar is
+// ---------- Test Supabase ----------
 const testSupabaseConnection = async () => {
   try {
-    console.log('Testing Supabase connection...');
     const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, {
       method: 'GET',
       headers: supabaseHeaders,
     });
-    if (!res.ok) {
-      console.error('Supabase connection test failed:', res.status, await res.text());
-      return false;
-    }
-    const data = await res.json();
-    console.log('Supabase connection test successful, data:', data);
+    if (!res.ok) return false;
+    await res.json();
     return true;
-  } catch (error) {
-    console.error('Supabase connection test error:', error.message);
+  } catch {
     return false;
   }
 };
@@ -116,11 +153,21 @@ const accessCodes = {
 };
 
 // Nieuwe Card-component voor elke parkeerkaart
-const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedAt, userName, onPress, onZoom, claimedCards }) => {
+const Card = ({
+  cardName,
+  cardKey,
+  cardImage,
+  claimedStatus,
+  claimedBy,
+  claimedAt,
+  userName,
+  onPress,
+  onZoom,
+  claimedCards,
+}) => {
   const fadeInValue = useRef(new Animated.Value(0)).current;
   const pulseValue = useRef(new Animated.Value(1)).current;
 
-  // Start fadeIn- en pulse-animatie
   useEffect(() => {
     Animated.timing(fadeInValue, {
       toValue: 1,
@@ -142,23 +189,23 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
         }),
       ]).start();
     }
-  }, [claimedStatus]); // eslint-disable-line react-hooks/exhaustive-deps
-  // fadeInValue en pulseValue zijn refs en veranderen niet, dus veilig om te negeren
+  }, [claimedStatus, fadeInValue, pulseValue]);
 
-  // Formatteer de claimedAt-tijd
   const formatClaimedAt = (timestamp) => {
     if (!timestamp) return '';
     const date = new Date(timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Bepaal of de afbeelding klikbaar is (alleen voor de gebruiker die de kaart heeft geclaimd)
+  // Afbeelding alleen klikbaar als niet geclaimd of als het door jou geclaimd is
   const isImageClickable = claimedStatus !== 'geclaimd' || claimedBy === userName;
 
-  // Zorg ervoor dat claimedCards altijd een object is
-  const hasUserClaimedAnotherCard = claimedCards && typeof claimedCards === 'object'
-    ? Object.values(claimedCards).some(card => card.claimedBy === userName && card.status === 'geclaimd')
-    : false;
+  const hasUserClaimedAnotherCard =
+    claimedCards && typeof claimedCards === 'object'
+      ? Object.values(claimedCards).some(
+          (card) => card.claimedBy === userName && card.status === 'geclaimd'
+        )
+      : false;
 
   return (
     <Animated.View
@@ -166,53 +213,65 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
         styles.cardContainer,
         {
           opacity: fadeInValue,
-          transform: [
-            { scale: claimedStatus === 'geclaimd' ? pulseValue : 1 },
-          ],
+          transform: [{ scale: claimedStatus === 'geclaimd' ? pulseValue : 1 }],
         },
       ]}
     >
       <Text style={styles.cardName}>{cardName}</Text>
+
       <TouchableOpacity
         onPress={isImageClickable ? () => onZoom(cardImage) : null}
         style={[
           styles.cardImageContainer,
           claimedStatus === 'geclaimd' ? styles.claimed : styles.available,
+          isWeb && { cursor: isImageClickable ? 'zoom-in' : 'default' },
         ]}
         disabled={!isImageClickable}
+        accessibilityRole="imagebutton"
+        accessibilityLabel={`${cardName} afbeelding`}
       >
         <Image source={{ uri: cardImage }} style={styles.cardImage} />
         {claimedStatus === 'geclaimd' ? (
-          <View style={styles.overlayContainer}>
+          <View style={styles.overlayContainer} pointerEvents="none">
             <Text style={styles.inUseText}>In gebruik door {claimedBy}</Text>
           </View>
         ) : (
           <Text style={styles.availableText}>Beschikbaar</Text>
         )}
       </TouchableOpacity>
+
       {claimedStatus === 'geclaimd' && claimedAt && (
         <Text style={styles.claimedAtText}>
           Geclaimd om {formatClaimedAt(claimedAt)} door {claimedBy}
         </Text>
       )}
+
       <View style={styles.cardButtons}>
         <TouchableOpacity
           onPress={() => onPress('claim')}
           style={[
             styles.claimButton,
-            (claimedStatus === 'geclaimd' || hasUserClaimedAnotherCard) && styles.disabledButton,
+            (claimedStatus === 'geclaimd' || hasUserClaimedAnotherCard) &&
+              styles.disabledButton,
+            isWeb && { cursor: (claimedStatus === 'geclaimd' || hasUserClaimedAnotherCard) ? 'not-allowed' : 'pointer' },
           ]}
           disabled={claimedStatus === 'geclaimd' || hasUserClaimedAnotherCard}
+          accessibilityRole="button"
+          accessibilityLabel={`Claim ${cardName}`}
         >
           <Text style={styles.buttonText}>Claim</Text>
         </TouchableOpacity>
+
         <TouchableOpacity
           onPress={() => onPress('release')}
           style={[
             styles.releaseButton,
             claimedBy !== userName && styles.disabledButton,
+            isWeb && { cursor: (claimedBy !== userName) ? 'not-allowed' : 'pointer' },
           ]}
           disabled={claimedBy !== userName}
+          accessibilityRole="button"
+          accessibilityLabel={`Vrijgeven ${cardName}`}
         >
           <Text style={styles.buttonText}>Vrijgeven</Text>
         </TouchableOpacity>
@@ -231,23 +290,24 @@ const ParkingApp = () => {
   const [hasSavedCode, setHasSavedCode] = useState(false);
   const [biometricSupported, setBiometricSupported] = useState(false);
 
-  // Animatie voor fadeInUp
   const fadeInUpValue = useRef(new Animated.Value(0)).current;
 
-  // Controleer of er een opgeslagen code is en of biometrische authenticatie beschikbaar is
   useEffect(() => {
     const initializeApp = async () => {
-      // Controleer of biometrische authenticatie beschikbaar is
-      const compatible = await LocalAuthentication.hasHardwareAsync();
-      const enrolled = await LocalAuthentication.isEnrolledAsync();
-      setBiometricSupported(compatible && enrolled);
+      // Biometrie alleen checken op native
+      if (!isWeb) {
+        const compatible = await LocalAuthentication.hasHardwareAsync();
+        const enrolled = await LocalAuthentication.isEnrolledAsync();
+        setBiometricSupported(compatible && enrolled);
+      } else {
+        setBiometricSupported(false);
+      }
 
-      // Controleer of er een opgeslagen code is
+      // Opgeslagen code
       const savedCode = await AsyncStorage.getItem('userCode');
       if (savedCode) {
         setCode(savedCode);
         setHasSavedCode(true);
-        // Probeer automatisch in te loggen
         if (accessCodes[savedCode]) {
           const name = accessCodes[savedCode];
           setUserName(name);
@@ -263,7 +323,6 @@ const ParkingApp = () => {
         }
       }
 
-      // Start de fadeInUp-animatie
       Animated.timing(fadeInUpValue, {
         toValue: 1,
         duration: 1500,
@@ -275,6 +334,7 @@ const ParkingApp = () => {
         setNetworkStatus(networkOk);
         const supabaseOk = await testSupabaseConnection();
         setConnectionStatus(supabaseOk);
+
         if (!networkOk) {
           Alert.alert('Netwerkfout', 'Kan geen verbinding maken met een eenvoudige API. Check je internetverbinding.');
         } else if (!supabaseOk) {
@@ -286,12 +346,14 @@ const ParkingApp = () => {
     };
 
     initializeApp();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  // fadeInUpValue is een ref en verandert niet, dus veilig om te negeren
+  }, [fadeInUpValue]);
 
-  // Log in met Face ID
   const handleFaceIDLogin = async () => {
     try {
+      if (isWeb) {
+        Alert.alert('Web', 'Biometrische login is niet beschikbaar op web.');
+        return;
+      }
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: 'Log in met Face ID',
         fallbackLabel: 'Gebruik toegangscode',
@@ -323,7 +385,6 @@ const ParkingApp = () => {
     }
   };
 
-  // Bij inloggen controleren we of de toegangscode klopt
   const handleLogin = async () => {
     if (accessCodes[code]) {
       const name = accessCodes[code];
@@ -336,17 +397,15 @@ const ParkingApp = () => {
       const currentTime = new Date();
       setLoginTime(currentTime);
       await updateUserLastLogin(name, currentTime);
-      // Sla de code op in AsyncStorage
       await AsyncStorage.setItem('userCode', code);
       setHasSavedCode(true);
       setLoggedIn(true);
     } else {
-      Alert.alert('Oeps', 'De ingevoerde code is onjuist.', [{ text: 'OK' }]);
+      Alert.alert('Oeps', 'De ingevoerde code is onjuist.');
     }
   };
 
   const handleLogout = async () => {
-    // Verwijder de opgeslagen code bij uitloggen
     await AsyncStorage.removeItem('userCode');
     setHasSavedCode(false);
     setLoggedIn(false);
@@ -407,14 +466,27 @@ const ParkingApp = () => {
             style={styles.input}
             keyboardType="numeric"
           />
-          <TouchableOpacity onPress={handleLogin} style={styles.loginButton}>
+          <TouchableOpacity
+            onPress={handleLogin}
+            style={[styles.loginButton, isWeb && { cursor: 'pointer' }]}
+            accessibilityRole="button"
+            accessibilityLabel="Inloggen"
+          >
             <Text style={styles.loginButtonText}>Inloggen</Text>
           </TouchableOpacity>
+
           {biometricSupported && hasSavedCode && (
-            <TouchableOpacity onPress={handleFaceIDLogin} style={styles.faceIDButton}>
+            <TouchableOpacity
+              onPress={handleFaceIDLogin}
+              style={[styles.faceIDButton, isWeb && { cursor: 'not-allowed', opacity: 0.6 }]}
+              disabled={isWeb}
+              accessibilityRole="button"
+              accessibilityLabel="Inloggen met Face ID"
+            >
               <Text style={styles.faceIDButtonText}>Inloggen met Face ID</Text>
             </TouchableOpacity>
           )}
+
           {networkStatus === false && (
             <Text style={styles.errorText}>Geen netwerkverbinding!</Text>
           )}
@@ -432,30 +504,20 @@ const ParkingApp = () => {
 // Controleer of de gebruiker al in de tabel 'users' staat en voeg deze toe indien nodig.
 const ensureUserExists = async (username) => {
   try {
-    console.log(`Checking if user exists: ${username}`);
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/users?username=eq.${encodeURIComponent(username)}`,
       { headers: supabaseHeaders }
     );
-    if (!res.ok) {
-      console.error('Error checking user:', res.status, await res.text());
-      return false;
-    }
+    if (!res.ok) return false;
     const data = await res.json();
-    console.log('User check result:', data);
     if (data && data.length === 0) {
-      console.log(`Inserting user: ${username}`);
       const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/users`, {
         method: 'POST',
         headers: supabaseHeaders,
         body: JSON.stringify({ username }),
       });
-      if (!insertRes.ok) {
-        console.error('Insert user error:', res.status, await res.text());
-        return false;
-      }
-      const insertData = await insertRes.json();
-      console.log('User inserted successfully:', insertData);
+      if (!insertRes.ok) return false;
+      await insertRes.json();
     }
     return true;
   } catch (error) {
@@ -467,7 +529,6 @@ const ensureUserExists = async (username) => {
 // Update de last_login kolom in de 'users'-tabel (alleen het tijdgedeelte).
 const updateUserLastLogin = async (username, loginTime) => {
   try {
-    console.log(`Updating last_login for user: ${username}`);
     const timeString = loginTime.toTimeString().split(' ')[0];
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/users?username=eq.${encodeURIComponent(username)}`,
@@ -477,12 +538,8 @@ const updateUserLastLogin = async (username, loginTime) => {
         body: JSON.stringify({ last_login: timeString }),
       }
     );
-    if (!res.ok) {
-      console.error('Error updating last_login:', res.status, await res.text());
-      return false;
-    }
-    const updateData = await res.json();
-    console.log('Last login updated successfully:', updateData);
+    if (!res.ok) return false;
+    await res.json();
     return true;
   } catch (error) {
     console.error('Error in updateUserLastLogin:', error.message);
@@ -497,64 +554,53 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
   const [fetchError, setFetchError] = useState(null);
   const [backgroundColor, setBackgroundColor] = useState('#f0f0f0');
 
-  // Animatie-waarden voor fadeInDown en achtergrondkleur
   const fadeInDownValue = useRef(new Animated.Value(0)).current;
   const backgroundAnim = useRef(new Animated.Value(0)).current;
 
-  // Haal alle claims uit de 'claims'-tabel op
   const fetchClaims = async () => {
     try {
-      console.log('Fetching claims...');
-      const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/claims?select=*`,
-        { method: 'GET', headers: supabaseHeaders }
-      );
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, {
+        method: 'GET',
+        headers: supabaseHeaders,
+      });
       if (!res.ok) {
         const errorText = await res.text();
-        console.error('Error fetching claims:', res.status, errorText);
         setFetchError(`Error fetching claims: ${res.status} - ${errorText}`);
         return;
       }
       const data = await res.json();
-      console.log('Claims fetched:', data);
-      setFetchError(null);
       const claimsObject = {};
       if (Array.isArray(data)) {
         data.forEach((item) => {
           claimsObject[item.card_key] = {
             status: item.status,
             claimedBy: item.claimed_by,
-            claimedAt: item.claimed_at, // Nieuwe claimed_at veld
+            claimedAt: item.claimed_at,
           };
         });
       }
+      setFetchError(null);
       setClaimedCards(claimsObject);
     } catch (error) {
-      console.error('Error fetching claims:', error.message);
       setFetchError(`Error fetching claims: ${error.message}`);
     }
   };
 
-  // Polling om claims up-to-date te houden
   useEffect(() => {
-    // Start fadeInDown-animatie
     Animated.timing(fadeInDownValue, {
       toValue: 1,
       duration: 1000,
       useNativeDriver: true,
     }).start();
 
-    // Haal claims op en stel polling in
     fetchClaims();
     const interval = setInterval(() => {
       fetchClaims();
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [fetchClaims]); // eslint-disable-line react-hooks/exhaustive-deps
-  // fadeInDownValue is een ref en verandert niet, dus veilig om te negeren
+  }, []); // fetchClaims is stabiel genoeg hier
 
-  // Animeer achtergrondkleur
   const animateBackground = (color) => {
     setBackgroundColor(color);
     Animated.timing(backgroundAnim, {
@@ -562,7 +608,6 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
       duration: 500,
       useNativeDriver: false,
     }).start(() => {
-      // Na 1 seconde terug naar standaardkleur
       Animated.timing(backgroundAnim, {
         toValue: 0,
         duration: 500,
@@ -576,24 +621,18 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     outputRange: ['#f0f0f0', backgroundColor],
   });
 
-  // Sla de claim (of vrijgave) op in de database
   const saveClaim = async (cardKey, claimedBy) => {
     setLoading(true);
     try {
       const newStatus = claimedBy ? 'geclaimd' : 'beschikbaar';
-      const currentTime = new Date().toISOString(); // Huidige tijd voor claimed_at
-      console.log(`Saving claim: cardKey=${cardKey}, status=${newStatus}, claimedBy=${claimedBy}`);
+      const currentTime = new Date().toISOString();
 
       const resSelect = await fetch(
         `${SUPABASE_URL}/rest/v1/claims?card_key=eq.${encodeURIComponent(cardKey)}`,
         { method: 'GET', headers: supabaseHeaders }
       );
-      if (!resSelect.ok) {
-        console.error('Select error:', resSelect.status, await resSelect.text());
-        throw new Error(`Select failed: ${resSelect.statusText}`);
-      }
+      if (!resSelect.ok) throw new Error(`Select failed: ${resSelect.statusText}`);
       const data = await resSelect.json();
-      console.log('Select result:', data);
 
       if (data && data.length > 0) {
         const resUpdate = await fetch(
@@ -604,16 +643,12 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
             body: JSON.stringify({
               status: newStatus,
               claimed_by: claimedBy,
-              claimed_at: claimedBy ? currentTime : null, // claimed_at alleen bij claimen
+              claimed_at: claimedBy ? currentTime : null,
             }),
           }
         );
-        if (!resUpdate.ok) {
-          console.error('Update error:', resUpdate.status, await resUpdate.text());
-          throw new Error(`Update failed: ${resUpdate.statusText}`);
-        }
-        const updateData = await resUpdate.json();
-        console.log('Update successful:', updateData);
+        if (!resUpdate.ok) throw new Error(`Update failed: ${resUpdate.statusText}`);
+        await resUpdate.json();
       } else {
         const resInsert = await fetch(`${SUPABASE_URL}/rest/v1/claims`, {
           method: 'POST',
@@ -622,36 +657,26 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
             card_key: cardKey,
             status: newStatus,
             claimed_by: claimedBy,
-            claimed_at: claimedBy ? currentTime : null, // claimed_at alleen bij claimen
+            claimed_at: claimedBy ? currentTime : null,
           }),
         });
-        if (!resInsert.ok) {
-          console.error('Insert error:', resInsert.status, await resInsert.text());
-          throw new Error(`Insert failed: ${resInsert.statusText}`);
-        }
-        const insertData = await resInsert.json();
-        console.log('Insert successful:', insertData);
+        if (!resInsert.ok) throw new Error(`Insert failed: ${resInsert.statusText}`);
+        await resInsert.json();
       }
 
-      // Stuur notificatie en animeer achtergrondkleur
       const cardName = {
         card1: 'parkeerkaart 1',
         card2: 'parkeerkaart 2',
         card3: 'parkeerkaart 3',
         card4: 'parkeerkaart 4',
       }[cardKey];
+
       if (claimedBy) {
-        await sendNotification(
-          `${cardName} geclaimd!`,
-          `${claimedBy} heeft ${cardName} geclaimd.`
-        );
-        animateBackground('#ff6666'); // Rood bij claimen
+        await sendNotification(`${cardName} geclaimd!`, `${claimedBy} heeft ${cardName} geclaimd.`);
+        animateBackground('#ff6666');
       } else {
-        await sendNotification(
-          `${cardName} beschikbaar!`,
-          `${cardName} is nu weer beschikbaar.`
-        );
-        animateBackground('#66ff66'); // Groen bij vrijgeven
+        await sendNotification(`${cardName} beschikbaar!`, `${cardName} is nu weer beschikbaar.`);
+        animateBackground('#66ff66');
       }
 
       await fetchClaims();
@@ -663,7 +688,6 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     }
   };
 
-  // Voorkom dat een gebruiker meer dan 1 kaart claimt
   const toggleClaim = (cardKey) => {
     const userClaimed = Object.entries(claimedCards).find(
       ([key, value]) => value.claimedBy === userName && key !== cardKey
@@ -673,42 +697,23 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
       return;
     }
     if (claimedCards[cardKey]?.status === 'geclaimd') {
-      Alert.alert(
-        'Kaart bezet',
-        `Deze kaart is al in gebruik door ${claimedCards[cardKey]?.claimedBy}.`,
-        [{ text: 'OK' }]
-      );
+      Alert.alert('Kaart bezet', `Deze kaart is al in gebruik door ${claimedCards[cardKey]?.claimedBy}.`);
     } else {
       Alert.alert('Bevestiging', 'Weet je zeker dat je deze kaart wilt claimen?', [
         { text: 'Annuleren', style: 'cancel' },
-        {
-          text: 'Ja',
-          onPress: () => {
-            saveClaim(cardKey, userName);
-          },
-        },
+        { text: 'Ja', onPress: () => saveClaim(cardKey, userName) },
       ]);
     }
   };
 
-  // Alleen de gebruiker die de kaart heeft geclaimd mag deze vrijgeven
   const toggleRelease = (cardKey) => {
     if (claimedCards[cardKey]?.claimedBy === userName) {
       Alert.alert('Bevestiging', 'Weet je zeker dat je deze kaart wilt vrijgeven?', [
         { text: 'Annuleren', style: 'cancel' },
-        {
-          text: 'Ja',
-          onPress: () => {
-            saveClaim(cardKey, null);
-          },
-        },
+        { text: 'Ja', onPress: () => saveClaim(cardKey, null) },
       ]);
     } else {
-      Alert.alert(
-        'Niet toegestaan',
-        'Je kunt alleen kaarten vrijgeven die jij hebt geclaimd.',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('Niet toegestaan', 'Je kunt alleen kaarten vrijgeven die jij hebt geclaimd.');
     }
   };
 
@@ -719,7 +724,6 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     card4: 'https://i.imgur.com/v2NekZk.jpeg',
   };
 
-  // Tel het aantal beschikbare kaarten
   const availableCards = Object.values(claimedCards).filter(
     (card) => card.status !== 'geclaimd'
   ).length;
@@ -753,10 +757,16 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     return (
       <View style={[styles.container, { backgroundColor: '#b22222' }]}>
         <Text style={styles.errorText}>{fetchError}</Text>
-        <TouchableOpacity onPress={fetchClaims} style={styles.retryButton}>
+        <TouchableOpacity
+          onPress={fetchClaims}
+          style={[styles.retryButton, isWeb && { cursor: 'pointer' }]}
+        >
           <Text style={styles.retryButtonText}>Opnieuw proberen</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
+        <TouchableOpacity
+          onPress={onLogout}
+          style={[styles.logoutButton, isWeb && { cursor: 'pointer' }]}
+        >
           <Text style={styles.logoutButtonText}>Uitloggen</Text>
         </TouchableOpacity>
       </View>
@@ -781,7 +791,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
           >
             <TouchableWithoutFeedback onPress={() => setZoomedImage(null)}>
               <Image
-                source={{ uri: zoomedImage }}
+                source={{ uri: zoomedImage || undefined }}
                 style={styles.zoomedImage}
                 resizeMode="contain"
               />
@@ -789,6 +799,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
           </ScrollView>
         </View>
       </Modal>
+
       <View style={styles.contentContainer}>
         <Animated.Text
           style={[
@@ -808,6 +819,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
         >
           Goedendag, {userName}!
         </Animated.Text>
+
         {loginTime && (
           <Animated.Text
             style={[
@@ -828,6 +840,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
             Ingelogd op: {loginTime.toLocaleTimeString()}
           </Animated.Text>
         )}
+
         <Animated.Text
           style={[
             styles.availableTextCount,
@@ -846,6 +859,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
         >
           Beschikbare kaarten: {availableCards}/4
         </Animated.Text>
+
         <View style={styles.cardsContainer}>
           <View style={styles.cardsRowCentered}>
             <Card
@@ -856,7 +870,9 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
               claimedBy={claimedCards.card1?.claimedBy}
               claimedAt={claimedCards.card1?.claimedAt}
               userName={userName}
-              onPress={(action) => (action === 'claim' ? toggleClaim('card1') : toggleRelease('card1'))}
+              onPress={(action) =>
+                action === 'claim' ? toggleClaim('card1') : toggleRelease('card1')
+              }
               onZoom={setZoomedImage}
               claimedCards={claimedCards}
             />
@@ -868,11 +884,14 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
               claimedBy={claimedCards.card2?.claimedBy}
               claimedAt={claimedCards.card2?.claimedAt}
               userName={userName}
-              onPress={(action) => (action === 'claim' ? toggleClaim('card2') : toggleRelease('card2'))}
+              onPress={(action) =>
+                action === 'claim' ? toggleClaim('card2') : toggleRelease('card2')
+              }
               onZoom={setZoomedImage}
               claimedCards={claimedCards}
             />
           </View>
+
           <View style={styles.cardsRowCentered}>
             <Card
               cardName="parkeerkaart 3"
@@ -882,7 +901,9 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
               claimedBy={claimedCards.card3?.claimedBy}
               claimedAt={claimedCards.card3?.claimedAt}
               userName={userName}
-              onPress={(action) => (action === 'claim' ? toggleClaim('card3') : toggleRelease('card3'))}
+              onPress={(action) =>
+                action === 'claim' ? toggleClaim('card3') : toggleRelease('card3')
+              }
               onZoom={setZoomedImage}
               claimedCards={claimedCards}
             />
@@ -894,13 +915,19 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
               claimedBy={claimedCards.card4?.claimedBy}
               claimedAt={claimedCards.card4?.claimedAt}
               userName={userName}
-              onPress={(action) => (action === 'claim' ? toggleClaim('card4') : toggleRelease('card4'))}
+              onPress={(action) =>
+                action === 'claim' ? toggleClaim('card4') : toggleRelease('card4')
+              }
               onZoom={setZoomedImage}
               claimedCards={claimedCards}
             />
           </View>
         </View>
-        <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
+
+        <TouchableOpacity
+          onPress={onLogout}
+          style={[styles.logoutButton, isWeb && { cursor: 'pointer' }]}
+        >
           <Text style={styles.logoutButtonText}>Uitloggen</Text>
         </TouchableOpacity>
       </View>
@@ -909,11 +936,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   formContainer: {
     width: '90%',
     maxWidth: 400,
@@ -935,18 +958,8 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#b22222',
   },
-  header: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  label: {
-    fontSize: 16,
-    marginBottom: 10,
-    color: '#555',
-  },
+  header: { fontSize: 28, fontWeight: 'bold', color: '#333', marginBottom: 10, textAlign: 'center' },
+  label: { fontSize: 16, marginBottom: 10, color: '#555' },
   input: {
     width: '100%',
     borderWidth: 1,
@@ -969,11 +982,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 15,
   },
-  loginButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  loginButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   faceIDButton: {
     width: '100%',
     paddingVertical: 15,
@@ -987,182 +996,44 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 15,
   },
-  faceIDButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  errorText: {
-    color: 'yellow',
-    marginTop: 10,
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: 20,
-    padding: 10,
-    borderRadius: 5,
-    backgroundColor: '#008000',
-    alignItems: 'center',
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  dashboardContainer: {
-    flex: 1,
-  },
-  contentContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  welcomeText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 5,
-    color: '#333',
-  },
-  loginTime: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 10,
-  },
-  availableTextCount: {
-    fontSize: 16,
-    color: '#555',
-    marginBottom: 10,
-    fontWeight: 'bold',
-  },
-  cardsContainer: {
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  cardsRowCentered: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    width: '100%',
-    marginVertical: 10,
-  },
-  cardContainer: {
-    alignItems: 'center',
-    marginHorizontal: 10,
-    width: '40%',
-  },
-  cardName: {
-    fontSize: 16,
-    marginBottom: 10,
-    color: '#333',
-  },
-  cardImageContainer: {
-    width: 150,
-    height: 150,
-    borderRadius: 10,
-    overflow: 'hidden',
-    borderWidth: 4,
-  },
-  cardImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  claimed: {
-    borderColor: 'red',
-  },
-  available: {
-    borderColor: 'green',
-  },
+  faceIDButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  errorText: { color: 'yellow', marginTop: 10, fontSize: 14, textAlign: 'center' },
+  retryButton: { marginTop: 20, padding: 10, borderRadius: 5, backgroundColor: '#008000', alignItems: 'center' },
+  retryButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  dashboardContainer: { flex: 1 },
+  contentContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  welcomeText: { fontSize: 20, fontWeight: 'bold', marginBottom: 5, color: '#333' },
+  loginTime: { fontSize: 14, color: '#666', marginBottom: 10 },
+  availableTextCount: { fontSize: 16, color: '#555', marginBottom: 10, fontWeight: 'bold' },
+  cardsContainer: { alignItems: 'center', marginVertical: 20 },
+  cardsRowCentered: { flexDirection: 'row', justifyContent: 'center', width: '100%', marginVertical: 10, flexWrap: 'wrap' },
+  cardContainer: { alignItems: 'center', marginHorizontal: 10, width: 260, maxWidth: '46%' },
+  cardName: { fontSize: 16, marginBottom: 10, color: '#333' },
+  cardImageContainer: { width: 150, height: 150, borderRadius: 10, overflow: 'hidden', borderWidth: 4 },
+  cardImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  claimed: { borderColor: 'red' },
+  available: { borderColor: 'green' },
   overlayContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 0, 0, 0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(255, 0, 0, 0.8)', justifyContent: 'center', alignItems: 'center',
   },
-  inUseText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  claimedAtText: {
-    fontSize: 10, // Kleinere fontgrootte voor discretere weergave
-    color: '#999', // Lichtere kleur voor minder nadruk
-    marginTop: 3,
-    textAlign: 'center',
-  },
+  inUseText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  claimedAtText: { fontSize: 10, color: '#999', marginTop: 3, textAlign: 'center' },
   availableText: {
-    position: 'absolute',
-    bottom: 10,
-    left: '50%',
-    transform: [{ translateX: -50 }],
-    color: 'white',
-    backgroundColor: 'rgba(0, 128, 0, 0.8)',
-    paddingHorizontal: 5,
-    borderRadius: 3,
+    position: 'absolute', bottom: 10, left: '50%', transform: [{ translateX: -50 }],
+    color: 'white', backgroundColor: 'rgba(0, 128, 0, 0.8)', paddingHorizontal: 5, borderRadius: 3,
   },
-  cardButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginTop: 10,
-  },
-  claimButton: {
-    backgroundColor: '#b22222',
-    padding: 10,
-    borderRadius: 5,
-    marginTop: 10,
-  },
-  releaseButton: {
-    backgroundColor: '#008000',
-    padding: 10,
-    borderRadius: 5,
-    marginTop: 10,
-  },
-  disabledButton: {
-    backgroundColor: '#ccc',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  logoutButton: {
-    marginTop: 20,
-    padding: 10,
-    borderRadius: 5,
-    backgroundColor: '#b22222',
-    alignItems: 'center',
-  },
-  logoutButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  modalBackground: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scrollZoomContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  zoomedImage: {
-    width: Dimensions.get('window').width,
-    height: Dimensions.get('window').height,
-  },
-  loadingText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-  },
+  cardButtons: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 10, gap: 10 },
+  claimButton: { backgroundColor: '#b22222', padding: 10, borderRadius: 5, marginTop: 10 },
+  releaseButton: { backgroundColor: '#008000', padding: 10, borderRadius: 5, marginTop: 10 },
+  disabledButton: { backgroundColor: '#ccc' },
+  buttonText: { color: '#fff', fontSize: 14, textAlign: 'center' },
+  logoutButton: { marginTop: 20, padding: 10, borderRadius: 5, backgroundColor: '#b22222', alignItems: 'center' },
+  logoutButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  modalBackground: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.8)', justifyContent: 'center', alignItems: 'center' },
+  scrollZoomContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  zoomedImage: { width: Dimensions.get('window').width, height: Dimensions.get('window').height },
+  loadingText: { fontSize: 18, fontWeight: 'bold', color: '#333' },
 });
 
 export default ParkingApp;
