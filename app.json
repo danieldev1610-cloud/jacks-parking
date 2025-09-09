@@ -1,30 +1,42 @@
 {
   "expo": {
-    "name": "jacks-parking",
-    "slug": "snack-fc8b7f8c-311a-47e1-ba7c-4e879b5fe1a8",
+    "name": "Jack's Parking",
+    "slug": "jacks-parking",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+
+    "icon": "./assets/icon.png",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+
     "ios": {
       "supportsTablet": true
     },
     "android": {
+      "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true
+      }
     },
+
     "web": {
-      "favicon": "./assets/favicon.png"
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png",
+      "name": "Jack's Parking",
+      "shortName": "Jack's",
+      "backgroundColor": "#ffffff",
+      "themeColor": "#b22222",
+      "display": "standalone",
+      "startUrl": "/"
     },
-    "description": "KEKKEKRERKESFSdbGFSYEDGFUYSDigfSIYFGAISUDVHCXIZUKXVJSDCZNo description"
+
+    "assetBundlePatterns": ["**/*"],
+    "description": "Jack's Parking – claim en beheer parkeerkaarten realtime."
   }
 }
