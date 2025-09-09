@@ -30,37 +30,31 @@ const supabaseHeaders = {
 };
 // =====================================
 
-// ---------- Helpers: web-safe alerts & confirms ----------
+// ---------- WEB/NATIVE HELPERS ----------
 const isWeb = Platform.OS === 'web';
 
+// Web-safe Alert wrapper (zelfde API als RNAlert.alert, zonder layout te veranderen)
 const Alert = {
   alert: (title, message = '', buttons) => {
-    if (!isWeb) {
-      return RNAlert.alert(title, message, buttons);
-    }
-    // Web fallback
+    if (!isWeb) return RNAlert.alert(title, message, buttons);
     if (Array.isArray(buttons) && buttons.length) {
-      // Als er Ja/Nee knoppen zijn, probeer confirm
-      const yes = buttons.find((b) => b.text?.toLowerCase() === 'ja' || b.onPress);
-      const cancel = buttons.find((b) => (b.style === 'cancel') || (b.text?.toLowerCase() === 'annuleren'));
+      const yes = buttons.find(b => b.text?.toLowerCase() === 'ja' || b.onPress);
+      const cancel = buttons.find(b => b.style === 'cancel' || b.text?.toLowerCase() === 'annuleren');
       const ok = window.confirm(`${title}\n\n${message}`);
       if (ok && yes?.onPress) yes.onPress();
       if (!ok && cancel?.onPress) cancel.onPress();
       return;
     }
     window.alert(`${title}\n\n${message}`);
-  },
+  }
 };
 
-// ---------- Notifications: native vs web ----------
+// Notificatie setup + send (native gebruikt Expo; web gebruikt browser Notification of fallback Alert)
 async function setupNotifications() {
   try {
     if (isWeb) {
-      // Probeer browser Notifications API; val terug op niets (we gebruiken Alert als fallback bij verzenden)
-      if ('Notification' in window) {
-        if (Notification.permission === 'default') {
-          await Notification.requestPermission();
-        }
+      if ('Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
       }
       return true;
     } else {
@@ -71,8 +65,7 @@ async function setupNotifications() {
       }
       return true;
     }
-  } catch (e) {
-    console.log('setupNotifications error', e);
+  } catch {
     return false;
   }
 }
@@ -83,21 +76,18 @@ async function sendNotification(title, body) {
       if ('Notification' in window && Notification.permission === 'granted') {
         new Notification(title, { body });
       } else {
-        // Fallback naar alert op web
         Alert.alert(title, body);
       }
       return;
     }
     await Notifications.scheduleNotificationAsync({
       content: { title, body },
-      trigger: null, // direct
+      trigger: null,
     });
-  } catch (e) {
-    console.log('sendNotification error', e);
-  }
+  } catch {}
 }
 
-// Configureer notificaties (native)
+// Alleen native notification handler instellen
 if (!isWeb) {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -108,7 +98,7 @@ if (!isWeb) {
   });
 }
 
-// ---------- Test network ----------
+// Testfuncties
 const testNetworkRequest = async () => {
   try {
     const res = await fetch('https://jsonplaceholder.typicode.com/posts/1');
@@ -120,7 +110,6 @@ const testNetworkRequest = async () => {
   }
 };
 
-// ---------- Test Supabase ----------
 const testSupabaseConnection = async () => {
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, {
@@ -152,44 +141,20 @@ const accessCodes = {
   '1604': 'Isis',
 };
 
-// Nieuwe Card-component voor elke parkeerkaart
-const Card = ({
-  cardName,
-  cardKey,
-  cardImage,
-  claimedStatus,
-  claimedBy,
-  claimedAt,
-  userName,
-  onPress,
-  onZoom,
-  claimedCards,
-}) => {
+// ====== Card (layout ongewijzigd) ======
+const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedAt, userName, onPress, onZoom, claimedCards }) => {
   const fadeInValue = useRef(new Animated.Value(0)).current;
   const pulseValue = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    Animated.timing(fadeInValue, {
-      toValue: 1,
-      duration: 1000,
-      useNativeDriver: true,
-    }).start();
-
+    Animated.timing(fadeInValue, { toValue: 1, duration: 1000, useNativeDriver: true }).start();
     if (claimedStatus === 'geclaimd') {
       Animated.sequence([
-        Animated.timing(pulseValue, {
-          toValue: 1.1,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseValue, {
-          toValue: 1,
-          duration: 500,
-          useNativeDriver: true,
-        }),
+        Animated.timing(pulseValue, { toValue: 1.1, duration: 500, useNativeDriver: true }),
+        Animated.timing(pulseValue, { toValue: 1, duration: 500, useNativeDriver: true }),
       ]).start();
     }
-  }, [claimedStatus, fadeInValue, pulseValue]);
+  }, [claimedStatus]); // refs veranderen niet
 
   const formatClaimedAt = (timestamp) => {
     if (!timestamp) return '';
@@ -197,28 +162,20 @@ const Card = ({
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Afbeelding alleen klikbaar als niet geclaimd of als het door jou geclaimd is
   const isImageClickable = claimedStatus !== 'geclaimd' || claimedBy === userName;
 
-  const hasUserClaimedAnotherCard =
-    claimedCards && typeof claimedCards === 'object'
-      ? Object.values(claimedCards).some(
-          (card) => card.claimedBy === userName && card.status === 'geclaimd'
-        )
-      : false;
+  const hasUserClaimedAnotherCard = claimedCards && typeof claimedCards === 'object'
+    ? Object.values(claimedCards).some(card => card.claimedBy === userName && card.status === 'geclaimd')
+    : false;
 
   return (
     <Animated.View
       style={[
         styles.cardContainer,
-        {
-          opacity: fadeInValue,
-          transform: [{ scale: claimedStatus === 'geclaimd' ? pulseValue : 1 }],
-        },
+        { opacity: fadeInValue, transform: [{ scale: claimedStatus === 'geclaimd' ? pulseValue : 1 }] },
       ]}
     >
       <Text style={styles.cardName}>{cardName}</Text>
-
       <TouchableOpacity
         onPress={isImageClickable ? () => onZoom(cardImage) : null}
         style={[
@@ -227,8 +184,6 @@ const Card = ({
           isWeb && { cursor: isImageClickable ? 'zoom-in' : 'default' },
         ]}
         disabled={!isImageClickable}
-        accessibilityRole="imagebutton"
-        accessibilityLabel={`${cardName} afbeelding`}
       >
         <Image source={{ uri: cardImage }} style={styles.cardImage} />
         {claimedStatus === 'geclaimd' ? (
@@ -239,29 +194,23 @@ const Card = ({
           <Text style={styles.availableText}>Beschikbaar</Text>
         )}
       </TouchableOpacity>
-
       {claimedStatus === 'geclaimd' && claimedAt && (
         <Text style={styles.claimedAtText}>
           Geclaimd om {formatClaimedAt(claimedAt)} door {claimedBy}
         </Text>
       )}
-
       <View style={styles.cardButtons}>
         <TouchableOpacity
           onPress={() => onPress('claim')}
           style={[
             styles.claimButton,
-            (claimedStatus === 'geclaimd' || hasUserClaimedAnotherCard) &&
-              styles.disabledButton,
+            (claimedStatus === 'geclaimd' || hasUserClaimedAnotherCard) && styles.disabledButton,
             isWeb && { cursor: (claimedStatus === 'geclaimd' || hasUserClaimedAnotherCard) ? 'not-allowed' : 'pointer' },
           ]}
           disabled={claimedStatus === 'geclaimd' || hasUserClaimedAnotherCard}
-          accessibilityRole="button"
-          accessibilityLabel={`Claim ${cardName}`}
         >
           <Text style={styles.buttonText}>Claim</Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           onPress={() => onPress('release')}
           style={[
@@ -270,8 +219,6 @@ const Card = ({
             isWeb && { cursor: (claimedBy !== userName) ? 'not-allowed' : 'pointer' },
           ]}
           disabled={claimedBy !== userName}
-          accessibilityRole="button"
-          accessibilityLabel={`Vrijgeven ${cardName}`}
         >
           <Text style={styles.buttonText}>Vrijgeven</Text>
         </TouchableOpacity>
@@ -294,7 +241,6 @@ const ParkingApp = () => {
 
   useEffect(() => {
     const initializeApp = async () => {
-      // Biometrie alleen checken op native
       if (!isWeb) {
         const compatible = await LocalAuthentication.hasHardwareAsync();
         const enrolled = await LocalAuthentication.isEnrolledAsync();
@@ -303,7 +249,6 @@ const ParkingApp = () => {
         setBiometricSupported(false);
       }
 
-      // Opgeslagen code
       const savedCode = await AsyncStorage.getItem('userCode');
       if (savedCode) {
         setCode(savedCode);
@@ -323,18 +268,13 @@ const ParkingApp = () => {
         }
       }
 
-      Animated.timing(fadeInUpValue, {
-        toValue: 1,
-        duration: 1500,
-        useNativeDriver: true,
-      }).start();
+      Animated.timing(fadeInUpValue, { toValue: 1, duration: 1500, useNativeDriver: true }).start();
 
       const checkConnections = async () => {
         const networkOk = await testNetworkRequest();
         setNetworkStatus(networkOk);
         const supabaseOk = await testSupabaseConnection();
         setConnectionStatus(supabaseOk);
-
         if (!networkOk) {
           Alert.alert('Netwerkfout', 'Kan geen verbinding maken met een eenvoudige API. Check je internetverbinding.');
         } else if (!supabaseOk) {
@@ -346,7 +286,7 @@ const ParkingApp = () => {
     };
 
     initializeApp();
-  }, [fadeInUpValue]);
+  }, []); // fadeInUpValue is ref
 
   const handleFaceIDLogin = async () => {
     try {
@@ -358,7 +298,6 @@ const ParkingApp = () => {
         promptMessage: 'Log in met Face ID',
         fallbackLabel: 'Gebruik toegangscode',
       });
-
       if (result.success) {
         const savedCode = await AsyncStorage.getItem('userCode');
         if (savedCode && accessCodes[savedCode]) {
@@ -422,21 +361,14 @@ const ParkingApp = () => {
             styles.formContainer,
             {
               opacity: fadeInUpValue,
-              transform: [
-                {
-                  translateY: fadeInUpValue.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [50, 0],
-                  }),
-                },
-              ],
+              transform: [{
+                translateY: fadeInUpValue.interpolate({ inputRange: [0, 1], outputRange: [50, 0] })
+              }],
             },
           ]}
         >
           <Image
-            source={{
-              uri: 'https://media.glassdoor.com/sqll/1075020/jvh-gaming-en-entertainment-squarelogo-1533909494473.png',
-            }}
+            source={{ uri: 'https://media.glassdoor.com/sqll/1075020/jvh-gaming-en-entertainment-squarelogo-1533909494473.png' }}
             style={styles.logo}
           />
           <Animated.Text
@@ -444,14 +376,9 @@ const ParkingApp = () => {
               styles.header,
               {
                 opacity: fadeInUpValue,
-                transform: [
-                  {
-                    scale: fadeInUpValue.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.5, 1],
-                    }),
-                  },
-                ],
+                transform: [{
+                  scale: fadeInUpValue.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] })
+                }],
               },
             ]}
           >
@@ -469,30 +396,20 @@ const ParkingApp = () => {
           <TouchableOpacity
             onPress={handleLogin}
             style={[styles.loginButton, isWeb && { cursor: 'pointer' }]}
-            accessibilityRole="button"
-            accessibilityLabel="Inloggen"
           >
             <Text style={styles.loginButtonText}>Inloggen</Text>
           </TouchableOpacity>
-
           {biometricSupported && hasSavedCode && (
             <TouchableOpacity
               onPress={handleFaceIDLogin}
               style={[styles.faceIDButton, isWeb && { cursor: 'not-allowed', opacity: 0.6 }]}
               disabled={isWeb}
-              accessibilityRole="button"
-              accessibilityLabel="Inloggen met Face ID"
             >
               <Text style={styles.faceIDButtonText}>Inloggen met Face ID</Text>
             </TouchableOpacity>
           )}
-
-          {networkStatus === false && (
-            <Text style={styles.errorText}>Geen netwerkverbinding!</Text>
-          )}
-          {connectionStatus === false && (
-            <Text style={styles.errorText}>Geen verbinding met Supabase!</Text>
-          )}
+          {networkStatus === false && <Text style={styles.errorText}>Geen netwerkverbinding!</Text>}
+          {connectionStatus === false && <Text style={styles.errorText}>Geen verbinding met Supabase!</Text>}
         </Animated.View>
       </View>
     );
@@ -501,13 +418,10 @@ const ParkingApp = () => {
   return <Dashboard onLogout={handleLogout} userName={userName} loginTime={loginTime} />;
 };
 
-// Controleer of de gebruiker al in de tabel 'users' staat en voeg deze toe indien nodig.
+// === DB helpers ===
 const ensureUserExists = async (username) => {
   try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/users?username=eq.${encodeURIComponent(username)}`,
-      { headers: supabaseHeaders }
-    );
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/users?username=eq.${encodeURIComponent(username)}`, { headers: supabaseHeaders });
     if (!res.ok) return false;
     const data = await res.json();
     if (data && data.length === 0) {
@@ -520,33 +434,30 @@ const ensureUserExists = async (username) => {
       await insertRes.json();
     }
     return true;
-  } catch (error) {
-    console.error('Error in ensureUserExists:', error.message);
+  } catch (e) {
+    console.error('Error in ensureUserExists:', e.message);
     return false;
   }
 };
 
-// Update de last_login kolom in de 'users'-tabel (alleen het tijdgedeelte).
 const updateUserLastLogin = async (username, loginTime) => {
   try {
     const timeString = loginTime.toTimeString().split(' ')[0];
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/users?username=eq.${encodeURIComponent(username)}`,
-      {
-        method: 'PATCH',
-        headers: supabaseHeaders,
-        body: JSON.stringify({ last_login: timeString }),
-      }
-    );
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/users?username=eq.${encodeURIComponent(username)}`, {
+      method: 'PATCH',
+      headers: supabaseHeaders,
+      body: JSON.stringify({ last_login: timeString }),
+    });
     if (!res.ok) return false;
     await res.json();
     return true;
-  } catch (error) {
-    console.error('Error in updateUserLastLogin:', error.message);
+  } catch (e) {
+    console.error('Error in updateUserLastLogin:', e.message);
     return false;
   }
 };
 
+// ====== Dashboard (layout ongewijzigd) ======
 const Dashboard = ({ onLogout, userName, loginTime }) => {
   const [claimedCards, setClaimedCards] = useState({});
   const [loading, setLoading] = useState(false);
@@ -559,10 +470,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
 
   const fetchClaims = async () => {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, {
-        method: 'GET',
-        headers: supabaseHeaders,
-      });
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, { method: 'GET', headers: supabaseHeaders });
       if (!res.ok) {
         const errorText = await res.text();
         setFetchError(`Error fetching claims: ${res.status} - ${errorText}`);
@@ -587,32 +495,16 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
   };
 
   useEffect(() => {
-    Animated.timing(fadeInDownValue, {
-      toValue: 1,
-      duration: 1000,
-      useNativeDriver: true,
-    }).start();
-
+    Animated.timing(fadeInDownValue, { toValue: 1, duration: 1000, useNativeDriver: true }).start();
     fetchClaims();
-    const interval = setInterval(() => {
-      fetchClaims();
-    }, 2000);
-
+    const interval = setInterval(fetchClaims, 2000);
     return () => clearInterval(interval);
-  }, []); // fetchClaims is stabiel genoeg hier
+  }, []); // layout unchanged
 
   const animateBackground = (color) => {
     setBackgroundColor(color);
-    Animated.timing(backgroundAnim, {
-      toValue: 1,
-      duration: 500,
-      useNativeDriver: false,
-    }).start(() => {
-      Animated.timing(backgroundAnim, {
-        toValue: 0,
-        duration: 500,
-        useNativeDriver: false,
-      }).start(() => setBackgroundColor('#f0f0f0'));
+    Animated.timing(backgroundAnim, { toValue: 1, duration: 500, useNativeDriver: false }).start(() => {
+      Animated.timing(backgroundAnim, { toValue: 0, duration: 500, useNativeDriver: false }).start(() => setBackgroundColor('#f0f0f0'));
     });
   };
 
@@ -627,49 +519,29 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
       const newStatus = claimedBy ? 'geclaimd' : 'beschikbaar';
       const currentTime = new Date().toISOString();
 
-      const resSelect = await fetch(
-        `${SUPABASE_URL}/rest/v1/claims?card_key=eq.${encodeURIComponent(cardKey)}`,
-        { method: 'GET', headers: supabaseHeaders }
-      );
+      const resSelect = await fetch(`${SUPABASE_URL}/rest/v1/claims?card_key=eq.${encodeURIComponent(cardKey)}`, { method: 'GET', headers: supabaseHeaders });
       if (!resSelect.ok) throw new Error(`Select failed: ${resSelect.statusText}`);
       const data = await resSelect.json();
 
       if (data && data.length > 0) {
-        const resUpdate = await fetch(
-          `${SUPABASE_URL}/rest/v1/claims?card_key=eq.${encodeURIComponent(cardKey)}`,
-          {
-            method: 'PATCH',
-            headers: supabaseHeaders,
-            body: JSON.stringify({
-              status: newStatus,
-              claimed_by: claimedBy,
-              claimed_at: claimedBy ? currentTime : null,
-            }),
-          }
-        );
+        const resUpdate = await fetch(`${SUPABASE_URL}/rest/v1/claims?card_key=eq.${encodeURIComponent(cardKey)}`, {
+          method: 'PATCH',
+          headers: supabaseHeaders,
+          body: JSON.stringify({ status: newStatus, claimed_by: claimedBy, claimed_at: claimedBy ? currentTime : null }),
+        });
         if (!resUpdate.ok) throw new Error(`Update failed: ${resUpdate.statusText}`);
         await resUpdate.json();
       } else {
         const resInsert = await fetch(`${SUPABASE_URL}/rest/v1/claims`, {
           method: 'POST',
           headers: supabaseHeaders,
-          body: JSON.stringify({
-            card_key: cardKey,
-            status: newStatus,
-            claimed_by: claimedBy,
-            claimed_at: claimedBy ? currentTime : null,
-          }),
+          body: JSON.stringify({ card_key: cardKey, status: newStatus, claimed_by: claimedBy, claimed_at: claimedBy ? currentTime : null }),
         });
         if (!resInsert.ok) throw new Error(`Insert failed: ${resInsert.statusText}`);
         await resInsert.json();
       }
 
-      const cardName = {
-        card1: 'parkeerkaart 1',
-        card2: 'parkeerkaart 2',
-        card3: 'parkeerkaart 3',
-        card4: 'parkeerkaart 4',
-      }[cardKey];
+      const cardName = { card1: 'parkeerkaart 1', card2: 'parkeerkaart 2', card3: 'parkeerkaart 3', card4: 'parkeerkaart 4' }[cardKey];
 
       if (claimedBy) {
         await sendNotification(`${cardName} geclaimd!`, `${claimedBy} heeft ${cardName} geclaimd.`);
@@ -689,9 +561,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
   };
 
   const toggleClaim = (cardKey) => {
-    const userClaimed = Object.entries(claimedCards).find(
-      ([key, value]) => value.claimedBy === userName && key !== cardKey
-    );
+    const userClaimed = Object.entries(claimedCards).find(([key, value]) => value.claimedBy === userName && key !== cardKey);
     if (userClaimed) {
       Alert.alert('Fout', 'Je hebt al een kaart geclaimd.');
       return;
@@ -724,9 +594,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     card4: 'https://i.imgur.com/v2NekZk.jpeg',
   };
 
-  const availableCards = Object.values(claimedCards).filter(
-    (card) => card.status !== 'geclaimd'
-  ).length;
+  const availableCards = Object.values(claimedCards).filter((card) => card.status !== 'geclaimd').length;
 
   if (loading) {
     return (
@@ -734,17 +602,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
         <Animated.Text
           style={[
             styles.loadingText,
-            {
-              opacity: fadeInDownValue,
-              transform: [
-                {
-                  translateY: fadeInDownValue.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-20, 0],
-                  }),
-                },
-              ],
-            },
+            { opacity: fadeInDownValue, transform: [{ translateY: fadeInDownValue.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] },
           ]}
         >
           Bezig met laden...
@@ -757,16 +615,10 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     return (
       <View style={[styles.container, { backgroundColor: '#b22222' }]}>
         <Text style={styles.errorText}>{fetchError}</Text>
-        <TouchableOpacity
-          onPress={fetchClaims}
-          style={[styles.retryButton, isWeb && { cursor: 'pointer' }]}
-        >
+        <TouchableOpacity onPress={fetchClaims} style={[styles.retryButton, isWeb && { cursor: 'pointer' }]}>
           <Text style={styles.retryButtonText}>Opnieuw proberen</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={onLogout}
-          style={[styles.logoutButton, isWeb && { cursor: 'pointer' }]}
-        >
+        <TouchableOpacity onPress={onLogout} style={[styles.logoutButton, isWeb && { cursor: 'pointer' }]}>
           <Text style={styles.logoutButtonText}>Uitloggen</Text>
         </TouchableOpacity>
       </View>
@@ -774,9 +626,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
   }
 
   return (
-    <Animated.View
-      style={[styles.dashboardContainer, { backgroundColor: backgroundColorInterpolate }]}
-    >
+    <Animated.View style={[styles.dashboardContainer, { backgroundColor: backgroundColorInterpolate }]}>
       <Modal
         visible={zoomedImage !== null}
         transparent={true}
@@ -784,82 +634,40 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
         onRequestClose={() => setZoomedImage(null)}
       >
         <View style={styles.modalBackground}>
-          <ScrollView
-            maximumZoomScale={3}
-            minimumZoomScale={1}
-            contentContainerStyle={styles.scrollZoomContainer}
-          >
+          <ScrollView maximumZoomScale={3} minimumZoomScale={1} contentContainerStyle={styles.scrollZoomContainer}>
             <TouchableWithoutFeedback onPress={() => setZoomedImage(null)}>
-              <Image
-                source={{ uri: zoomedImage || undefined }}
-                style={styles.zoomedImage}
-                resizeMode="contain"
-              />
+              <Image source={{ uri: zoomedImage || undefined }} style={styles.zoomedImage} resizeMode="contain" />
             </TouchableWithoutFeedback>
           </ScrollView>
         </View>
       </Modal>
-
       <View style={styles.contentContainer}>
         <Animated.Text
           style={[
             styles.welcomeText,
-            {
-              opacity: fadeInDownValue,
-              transform: [
-                {
-                  translateY: fadeInDownValue.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-20, 0],
-                  }),
-                },
-              ],
-            },
+            { opacity: fadeInDownValue, transform: [{ translateY: fadeInDownValue.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] },
           ]}
         >
           Goedendag, {userName}!
         </Animated.Text>
-
         {loginTime && (
           <Animated.Text
             style={[
               styles.loginTime,
-              {
-                opacity: fadeInDownValue,
-                transform: [
-                  {
-                    translateY: fadeInDownValue.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [-20, 0],
-                    }),
-                  },
-                ],
-              },
+              { opacity: fadeInDownValue, transform: [{ translateY: fadeInDownValue.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] },
             ]}
           >
             Ingelogd op: {loginTime.toLocaleTimeString()}
           </Animated.Text>
         )}
-
         <Animated.Text
           style={[
             styles.availableTextCount,
-            {
-              opacity: fadeInDownValue,
-              transform: [
-                {
-                  translateY: fadeInDownValue.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-20, 0],
-                  }),
-                },
-              ],
-            },
+            { opacity: fadeInDownValue, transform: [{ translateY: fadeInDownValue.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] },
           ]}
         >
           Beschikbare kaarten: {availableCards}/4
         </Animated.Text>
-
         <View style={styles.cardsContainer}>
           <View style={styles.cardsRowCentered}>
             <Card
@@ -870,9 +678,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
               claimedBy={claimedCards.card1?.claimedBy}
               claimedAt={claimedCards.card1?.claimedAt}
               userName={userName}
-              onPress={(action) =>
-                action === 'claim' ? toggleClaim('card1') : toggleRelease('card1')
-              }
+              onPress={(action) => (action === 'claim' ? toggleClaim('card1') : toggleRelease('card1'))}
               onZoom={setZoomedImage}
               claimedCards={claimedCards}
             />
@@ -884,14 +690,11 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
               claimedBy={claimedCards.card2?.claimedBy}
               claimedAt={claimedCards.card2?.claimedAt}
               userName={userName}
-              onPress={(action) =>
-                action === 'claim' ? toggleClaim('card2') : toggleRelease('card2')
-              }
+              onPress={(action) => (action === 'claim' ? toggleClaim('card2') : toggleRelease('card2'))}
               onZoom={setZoomedImage}
               claimedCards={claimedCards}
             />
           </View>
-
           <View style={styles.cardsRowCentered}>
             <Card
               cardName="parkeerkaart 3"
@@ -901,9 +704,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
               claimedBy={claimedCards.card3?.claimedBy}
               claimedAt={claimedCards.card3?.claimedAt}
               userName={userName}
-              onPress={(action) =>
-                action === 'claim' ? toggleClaim('card3') : toggleRelease('card3')
-              }
+              onPress={(action) => (action === 'claim' ? toggleClaim('card3') : toggleRelease('card3'))}
               onZoom={setZoomedImage}
               claimedCards={claimedCards}
             />
@@ -915,19 +716,13 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
               claimedBy={claimedCards.card4?.claimedBy}
               claimedAt={claimedCards.card4?.claimedAt}
               userName={userName}
-              onPress={(action) =>
-                action === 'claim' ? toggleClaim('card4') : toggleRelease('card4')
-              }
+              onPress={(action) => (action === 'claim' ? toggleClaim('card4') : toggleRelease('card4'))}
               onZoom={setZoomedImage}
               claimedCards={claimedCards}
             />
           </View>
         </View>
-
-        <TouchableOpacity
-          onPress={onLogout}
-          style={[styles.logoutButton, isWeb && { cursor: 'pointer' }]}
-        >
+        <TouchableOpacity onPress={onLogout} style={[styles.logoutButton, isWeb && { cursor: 'pointer' }]}>
           <Text style={styles.logoutButtonText}>Uitloggen</Text>
         </TouchableOpacity>
       </View>
@@ -935,6 +730,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
   );
 };
 
+// ====== JOUW ORIGINELE STYLES (ONGEWIJZIGD) ======
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   formContainer: {
@@ -951,50 +747,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: {
-    width: 120,
-    height: 120,
-    marginBottom: 15,
-    borderRadius: 60,
-    borderWidth: 2,
-    borderColor: '#b22222',
+    width: 120, height: 120, marginBottom: 15, borderRadius: 60, borderWidth: 2, borderColor: '#b22222',
   },
   header: { fontSize: 28, fontWeight: 'bold', color: '#333', marginBottom: 10, textAlign: 'center' },
   label: { fontSize: 16, marginBottom: 10, color: '#555' },
   input: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    marginBottom: 20,
-    backgroundColor: '#fefefe',
+    width: '100%', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 20, backgroundColor: '#fefefe',
   },
   loginButton: {
-    width: '100%',
-    paddingVertical: 15,
-    borderRadius: 8,
-    backgroundColor: '#b22222',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.8,
-    shadowRadius: 10,
-    elevation: 15,
+    width: '100%', paddingVertical: 15, borderRadius: 8, backgroundColor: '#b22222', alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.8, shadowRadius: 10, elevation: 15,
   },
   loginButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   faceIDButton: {
-    width: '100%',
-    paddingVertical: 15,
-    borderRadius: 8,
-    backgroundColor: '#555',
-    alignItems: 'center',
-    marginTop: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.8,
-    shadowRadius: 10,
-    elevation: 15,
+    width: '100%', paddingVertical: 15, borderRadius: 8, backgroundColor: '#555', alignItems: 'center', marginTop: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.8, shadowRadius: 10, elevation: 15,
   },
   faceIDButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   errorText: { color: 'yellow', marginTop: 10, fontSize: 14, textAlign: 'center' },
@@ -1006,8 +773,8 @@ const styles = StyleSheet.create({
   loginTime: { fontSize: 14, color: '#666', marginBottom: 10 },
   availableTextCount: { fontSize: 16, color: '#555', marginBottom: 10, fontWeight: 'bold' },
   cardsContainer: { alignItems: 'center', marginVertical: 20 },
-  cardsRowCentered: { flexDirection: 'row', justifyContent: 'center', width: '100%', marginVertical: 10, flexWrap: 'wrap' },
-  cardContainer: { alignItems: 'center', marginHorizontal: 10, width: 260, maxWidth: '46%' },
+  cardsRowCentered: { flexDirection: 'row', justifyContent: 'center', width: '100%', marginVertical: 10 },
+  cardContainer: { alignItems: 'center', marginHorizontal: 10, width: '40%' },
   cardName: { fontSize: 16, marginBottom: 10, color: '#333' },
   cardImageContainer: { width: 150, height: 150, borderRadius: 10, overflow: 'hidden', borderWidth: 4 },
   cardImage: { width: '100%', height: '100%', resizeMode: 'cover' },
@@ -1023,7 +790,7 @@ const styles = StyleSheet.create({
     position: 'absolute', bottom: 10, left: '50%', transform: [{ translateX: -50 }],
     color: 'white', backgroundColor: 'rgba(0, 128, 0, 0.8)', paddingHorizontal: 5, borderRadius: 3,
   },
-  cardButtons: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 10, gap: 10 },
+  cardButtons: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 10 },
   claimButton: { backgroundColor: '#b22222', padding: 10, borderRadius: 5, marginTop: 10 },
   releaseButton: { backgroundColor: '#008000', padding: 10, borderRadius: 5, marginTop: 10 },
   disabledButton: { backgroundColor: '#ccc' },
