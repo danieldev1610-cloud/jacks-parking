@@ -143,7 +143,7 @@ const accessCodes = {
 };
 
 // ====== Card (layout ongewijzigd) ======
-const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedAt, userName, onPress, onZoom, claimedCards }) => {
+const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedAt, userName, onPress, onZoom }) => {
   const fadeInValue = useRef(new Animated.Value(0)).current;
   const pulseValue = useRef(new Animated.Value(1)).current;
 
@@ -155,19 +155,13 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
         Animated.timing(pulseValue, { toValue: 1, duration: 500, useNativeDriver: true }),
       ]).start();
     }
-  }, [claimedStatus]); // refs veranderen niet
+  }, [claimedStatus]);
 
   const formatClaimedAt = (timestamp) => {
     if (!timestamp) return '';
     const date = new Date(timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
-
-  const isImageClickable = claimedStatus !== 'geclaimd' || claimedBy === userName;
-
-  const hasUserClaimedAnotherCard = claimedCards && typeof claimedCards === 'object'
-    ? Object.values(claimedCards).some(card => card.claimedBy === userName && card.status === 'geclaimd')
-    : false;
 
   return (
     <Animated.View
@@ -178,13 +172,12 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
     >
       <Text style={styles.cardName}>{cardName}</Text>
       <TouchableOpacity
-        onPress={isImageClickable ? () => onZoom(cardImage) : null}
+        onPress={() => onZoom(cardImage)}
         style={[
           styles.cardImageContainer,
           claimedStatus === 'geclaimd' ? styles.claimed : styles.available,
-          isWeb && { cursor: isImageClickable ? 'zoom-in' : 'default' },
+          isWeb && { cursor: 'zoom-in' },
         ]}
-        disabled={!isImageClickable}
       >
         <Image source={{ uri: cardImage }} style={styles.cardImage} />
         {claimedStatus === 'geclaimd' ? (
@@ -195,31 +188,24 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
           <Text style={styles.availableText}>Beschikbaar</Text>
         )}
       </TouchableOpacity>
+
       {claimedStatus === 'geclaimd' && claimedAt && (
         <Text style={styles.claimedAtText}>
           Geclaimd om {formatClaimedAt(claimedAt)} door {claimedBy}
         </Text>
       )}
+
       <View style={styles.cardButtons}>
         <TouchableOpacity
           onPress={() => onPress('claim')}
-          style={[
-            styles.claimButton,
-            (claimedStatus === 'geclaimd' || hasUserClaimedAnotherCard) && styles.disabledButton,
-            isWeb && { cursor: (claimedStatus === 'geclaimd' || hasUserClaimedAnotherCard) ? 'not-allowed' : 'pointer' },
-          ]}
-          disabled={claimedStatus === 'geclaimd' || hasUserClaimedAnotherCard}
+          style={[styles.claimButton, isWeb && { cursor: 'pointer' }]}
         >
           <Text style={styles.buttonText}>Claim</Text>
         </TouchableOpacity>
+
         <TouchableOpacity
           onPress={() => onPress('release')}
-          style={[
-            styles.releaseButton,
-            claimedBy !== userName && styles.disabledButton,
-            isWeb && { cursor: (claimedBy !== userName) ? 'not-allowed' : 'pointer' },
-          ]}
-          disabled={claimedBy !== userName}
+          style={[styles.releaseButton, isWeb && { cursor: 'pointer' }]}
         >
           <Text style={styles.buttonText}>Vrijgeven</Text>
         </TouchableOpacity>
