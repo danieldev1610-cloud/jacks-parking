@@ -36,6 +36,17 @@ const MAX_HOURS = 10;
 const MAX_MS = MAX_HOURS * 60 * 60 * 1000;
 const NOTIFY_BEFORE_MS = 30 * 60 * 1000; // 30 min voor einde
 
+// iOS-web detectie (PWA op iPhone)
+let isIOSWeb = false;
+try {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  isIOSWeb = isWeb && (/iPad|iPhone|iPod/.test(ua) || (ua.includes('Macintosh') && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 2));
+} catch { isIOSWeb = false; }
+
+// Dynamische maten voor iPhone vs andere
+const CARD_CONTAINER_WIDTH = isIOSWeb ? 150 : 180;
+const CARD_IMG_SIZE = isIOSWeb ? 130 : 150;
+
 // Web-safe Alert wrapper
 const Alert = {
   alert: (title, message = '', buttons) => {
@@ -179,9 +190,10 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
         style={[
           styles.cardImageContainer,
           claimedStatus === 'geclaimd' ? styles.claimed : styles.available,
-          isWeb && { cursor: (claimedStatus !== 'geclaimd' || claimedBy === userName) ? 'zoom-in' : 'not-allowed' },
+          isWeb && { cursor: (claimedStatus !== 'geclaimd' || claimedBy === userName || userName === 'Daniel') ? 'zoom-in' : 'not-allowed' },
         ]}
-        disabled={claimedStatus === 'geclaimd' && claimedBy !== userName}
+        // Daniel mag altijd interacteren, ook bij geclaimd door iemand anders
+        disabled={claimedStatus === 'geclaimd' && claimedBy !== userName && userName !== 'Daniel'}
       >
         <Image source={{ uri: cardImage }} style={styles.cardImage} />
         {claimedStatus === 'geclaimd' ? (
@@ -207,11 +219,11 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
       )}
 
       <View style={styles.cardButtons}>
-        <TouchableOpacity onPress={() => onPress('claim')} style={[styles.claimButton, isWeb && { cursor: 'pointer' }]}>
+        <TouchableOpacity onPress={() => onPress('claim')} style={styles.claimButton}>
           <Text style={styles.buttonText}>Claim</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => onPress('release')} style={[styles.releaseButton, isWeb && { cursor: 'pointer' }]}>
+        <TouchableOpacity onPress={() => onPress('release')} style={styles.releaseButton}>
           <Text style={styles.buttonText}>Vrijgeven</Text>
         </TouchableOpacity>
       </View>
@@ -348,7 +360,7 @@ const ParkingApp = () => {
 
   if (!loggedIn) {
     return (
-      <View style={[styles.container, { backgroundColor: '#b22222' }]}>
+      <View style={[styles.container, { backgroundColor: '#b22222', paddingTop: isIOSWeb ? 16 : 0 }]}>
         <Animated.View
           style={[
             styles.formContainer,
@@ -382,7 +394,7 @@ const ParkingApp = () => {
             style={styles.input}
             keyboardType="numeric"
           />
-          <TouchableOpacity onPress={handleLogin} style={[styles.loginButton, isWeb && { cursor: 'pointer' }]}>
+          <TouchableOpacity onPress={handleLogin} style={styles.loginButton}>
             <Text style={styles.loginButtonText}>Inloggen</Text>
           </TouchableOpacity>
           {biometricSupported && hasSavedCode && (
@@ -602,23 +614,40 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
   };
 
   const toggleClaim = (cardKey) => {
-    const userClaimed = Object.entries(claimedCards).find(([key, value]) => value.claimedBy === userName && key !== cardKey);
-    if (userClaimed) {
-      Alert.alert('Fout', 'Je hebt al een kaart geclaimd.');
-      return;
-    }
-    if (claimedCards[cardKey]?.status === 'geclaimd') {
-      Alert.alert('Kaart bezet', `Deze kaart is al in gebruik door ${claimedCards[cardKey]?.claimedBy}.`);
-    } else {
+    const isSuperUser = userName === 'Daniel';
+
+    if (!isSuperUser) {
+      // normale beperking: 1 kaart per gebruiker
+      const userClaimed = Object.entries(claimedCards).find(([key, value]) => value.claimedBy === userName && key !== cardKey);
+      if (userClaimed) {
+        Alert.alert('Fout', 'Je hebt al een kaart geclaimd.');
+        return;
+      }
+      // druk bezet door iemand anders
+      if (claimedCards[cardKey]?.status === 'geclaimd') {
+        Alert.alert('Kaart bezet', `Deze kaart is al in gebruik door ${claimedCards[cardKey]?.claimedBy}.`);
+        return;
+      }
+      // normale claim
       Alert.alert('Bevestiging', 'Weet je zeker dat je deze kaart wilt claimen?', [
         { text: 'Annuleren', style: 'cancel' },
         { text: 'Ja', onPress: () => saveClaim(cardKey, userName) },
       ]);
+      return;
     }
+
+    // Daniel: kan altijd claimen, ook overnemen
+    const bezetter = claimedCards[cardKey]?.claimedBy;
+    const msg = bezetter ? `Deze kaart is in gebruik door ${bezetter}. Wil je overnemen?` : 'Weet je zeker dat je deze kaart wilt claimen?';
+    Alert.alert('Bevestiging', msg, [
+      { text: 'Annuleren', style: 'cancel' },
+      { text: 'Ja', onPress: () => saveClaim(cardKey, userName) },
+    ]);
   };
 
   const toggleRelease = (cardKey) => {
-    if (claimedCards[cardKey]?.claimedBy === userName) {
+    const isSuperUser = userName === 'Daniel';
+    if (claimedCards[cardKey]?.claimedBy === userName || isSuperUser) {
       Alert.alert('Bevestiging', 'Weet je zeker dat je deze kaart wilt vrijgeven?', [
         { text: 'Annuleren', style: 'cancel' },
         { text: 'Ja', onPress: () => saveClaim(cardKey, null) },
@@ -635,7 +664,9 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     card4: 'https://i.imgur.com/v2NekZk.jpeg',
   };
 
-  const availableCards = Object.values(claimedCards).filter((card) => card.status !== 'geclaimd').length;
+  const allKeys = ['card1','card2','card3','card4'];
+  const availableCards = allKeys.reduce((acc, ck) => acc + (claimedCards[ck]?.status === 'geclaimd' ? 0 : 1), 0);
+  const myClaimsCount = allKeys.reduce((acc, ck) => acc + (claimedCards[ck]?.claimedBy === userName ? 1 : 0), 0);
 
   if (loading) {
     return (
@@ -656,10 +687,10 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     return (
       <View style={[styles.container, { backgroundColor: '#b22222' }]}>
         <Text style={styles.errorText}>{fetchError}</Text>
-        <TouchableOpacity onPress={fetchClaims} style={[styles.retryButton, isWeb && { cursor: 'pointer' }]}>
+        <TouchableOpacity onPress={fetchClaims} style={styles.retryButton}>
           <Text style={styles.retryButtonText}>Opnieuw proberen</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={onLogout} style={[styles.logoutButton, isWeb && { cursor: 'pointer' }]}>
+        <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
           <Text style={styles.logoutButtonText}>Uitloggen</Text>
         </TouchableOpacity>
       </View>
@@ -686,7 +717,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
             <Text style={styles.overviewTitle}>Overzicht & Leaderboard</Text>
 
             <Text style={styles.sectionTitle}>Huidig overzicht</Text>
-            {['card1','card2','card3','card4'].map((ck) => {
+            {allKeys.map((ck) => {
               const info = claimedCards[ck];
               const who = info?.claimedBy || '—';
               const elapsed = info?.claimedAt ? formatHM(nowTs - new Date(info.claimedAt).getTime()) : '00:00';
@@ -703,10 +734,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
             <View style={{ height: 12 }} />
 
             <Text style={styles.sectionTitle}>Leaderboard (totaal claims)</Text>
-            <TouchableOpacity
-              onPress={fetchLeaderboard}
-              style={[styles.refreshButton, isWeb && { cursor: 'pointer' }]}
-            >
+            <TouchableOpacity onPress={fetchLeaderboard} style={styles.refreshButton}>
               <Text style={styles.refreshButtonText}>Vernieuwen</Text>
             </TouchableOpacity>
             <View style={{ maxHeight: 220 }}>
@@ -723,26 +751,15 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
               </ScrollView>
             </View>
 
-            <TouchableOpacity
-              onPress={() => setOverviewOpen(false)}
-              style={[styles.closeButton, isWeb && { cursor: 'pointer' }]}
-            >
+            <TouchableOpacity onPress={() => setOverviewOpen(false)} style={styles.closeButton}>
               <Text style={styles.closeButtonText}>Sluiten</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      <View style={styles.contentContainer}>
-        <View style={{ alignSelf: 'flex-end', marginBottom: 8 }}>
-          <TouchableOpacity
-            onPress={() => { fetchLeaderboard(); setOverviewOpen(true); }}
-            style={[styles.overviewBtn, isWeb && { cursor: 'pointer' }]}
-          >
-            <Text style={styles.overviewBtnText}>Overzicht</Text>
-          </TouchableOpacity>
-        </View>
-
+      <View style={[styles.contentContainer, isIOSWeb && styles.contentContainerIOSWeb]}>
+        {/* (VERPLAATST) Overzicht-knop stond eerst rechtsboven; nu onder de teller */}
         <Animated.Text
           style={[
             styles.welcomeText,
@@ -769,6 +786,14 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
         >
           Beschikbare kaarten: {availableCards}/4
         </Animated.Text>
+        <Text style={styles.myClaimsText}>Jij geclaimd: {myClaimsCount}/4</Text>
+
+        <TouchableOpacity
+          onPress={() => { fetchLeaderboard(); setOverviewOpen(true); }}
+          style={styles.overviewBtn}
+        >
+          <Text style={styles.overviewBtnText}>📊 Overzicht</Text>
+        </TouchableOpacity>
 
         <View style={styles.cardsContainer}>
           <View style={styles.cardsRowCentered}>
@@ -825,7 +850,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
           </View>
         </View>
 
-        <TouchableOpacity onPress={onLogout} style={[styles.logoutButton, isWeb && { cursor: 'pointer' }]}>
+        <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
           <Text style={styles.logoutButtonText}>Uitloggen</Text>
         </TouchableOpacity>
       </View>
@@ -870,16 +895,22 @@ const styles = StyleSheet.create({
   errorText: { color: 'yellow', marginTop: 10, fontSize: 14, textAlign: 'center' },
   retryButton: { marginTop: 20, padding: 10, borderRadius: 5, backgroundColor: '#008000', alignItems: 'center' },
   retryButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+
   dashboardContainer: { flex: 1 },
   contentContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, width: '100%' },
+  contentContainerIOSWeb: { justifyContent: 'flex-start' }, // iPhone PWA: niet centreren om “half zichtbaar” te voorkomen
+
   welcomeText: { fontSize: 20, fontWeight: 'bold', marginBottom: 5, color: '#333' },
   loginTime: { fontSize: 14, color: '#666', marginBottom: 10 },
-  availableTextCount: { fontSize: 16, color: '#555', marginBottom: 10, fontWeight: 'bold' },
-  cardsContainer: { alignItems: 'center', marginVertical: 20, width: '100%' },
-  cardsRowCentered: { flexDirection: 'row', justifyContent: 'center', width: '100%', marginVertical: 10, gap: 20 },
-  cardContainer: { alignItems: 'center', marginHorizontal: 10, width: 180, maxWidth: '42%' },
+  availableTextCount: { fontSize: 16, color: '#555', marginBottom: 4, fontWeight: 'bold' },
+  myClaimsText: { fontSize: 14, color: '#666', marginBottom: 8 },
+
+  cardsContainer: { alignItems: 'center', marginVertical: 14, width: '100%' },
+  cardsRowCentered: { flexDirection: 'row', justifyContent: 'center', width: '100%', marginVertical: 8, gap: 16 },
+
+  cardContainer: { alignItems: 'center', marginHorizontal: 10, width: CARD_CONTAINER_WIDTH, maxWidth: '44%' },
   cardName: { fontSize: 16, marginBottom: 10, color: '#333' },
-  cardImageContainer: { width: 150, height: 150, borderRadius: 10, overflow: 'hidden', borderWidth: 4 },
+  cardImageContainer: { width: CARD_IMG_SIZE, height: CARD_IMG_SIZE, borderRadius: 10, overflow: 'hidden', borderWidth: 4 },
   cardImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   claimed: { borderColor: 'red' },
   available: { borderColor: 'green' },
@@ -899,15 +930,18 @@ const styles = StyleSheet.create({
   releaseButton: { backgroundColor: '#008000', padding: 10, borderRadius: 5, marginTop: 10, flex: 1, alignItems: 'center' },
   disabledButton: { backgroundColor: '#ccc' },
   buttonText: { color: '#fff', fontSize: 14, textAlign: 'center' },
-  logoutButton: { marginTop: 20, padding: 10, borderRadius: 5, backgroundColor: '#b22222', alignItems: 'center' },
+
+  overviewBtn: { backgroundColor: '#333', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, marginTop: 4 },
+  overviewBtnText: { color: '#fff', fontWeight: '600' },
+
+  logoutButton: { marginTop: 12, padding: 10, borderRadius: 5, backgroundColor: '#b22222', alignItems: 'center' },
   logoutButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+
   modalBackground: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.8)', justifyContent: 'center', alignItems: 'center', padding: 16 },
   scrollZoomContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   zoomedImage: { width: Dimensions.get('window').width, height: Dimensions.get('window').height },
   loadingText: { fontSize: 18, fontWeight: 'bold', color: '#333' },
 
-  overviewBtn: { backgroundColor: '#333', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 6 },
-  overviewBtnText: { color: '#fff', fontWeight: '600' },
   overviewCard: { width: '90%', maxWidth: 520, backgroundColor: '#fff', borderRadius: 12, padding: 16 },
   overviewTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 8, color: '#111' },
   sectionTitle: { fontSize: 14, fontWeight: 'bold', marginTop: 8, color: '#222' },
