@@ -147,6 +147,7 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
 
   const elapsedMs = claimedAt ? (nowTs - new Date(claimedAt).getTime()) : 0;
   const remainingMs = Math.max(0, MAX_MS - elapsedMs);
+  const elapsedStr = formatHM(elapsedMs);
   const remainingStr = formatHM(remainingMs);
 
   const formatClaimedAt = (timestamp) => {
@@ -190,6 +191,7 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
               Geclaimd om {formatClaimedAt(claimedAt)} door {claimedBy}
             </Text>
           )}
+          <Text style={styles.timerText}>Tijd bezig: {elapsedStr}</Text>
           <Text style={[styles.timerText, remainingMs <= 0 && { color: '#b22222', fontWeight: 'bold' }]}>
             Reset over: {remainingStr}
           </Text>
