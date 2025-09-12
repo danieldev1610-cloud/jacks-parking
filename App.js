@@ -171,23 +171,24 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
       ]}
     >
       <Text style={styles.cardName}>{cardName}</Text>
-      <TouchableOpacity
-        onPress={() => onZoom(cardImage)}
-        style={[
-          styles.cardImageContainer,
-          claimedStatus === 'geclaimd' ? styles.claimed : styles.available,
-          isWeb && { cursor: 'zoom-in' },
-        ]}
-      >
-        <Image source={{ uri: cardImage }} style={styles.cardImage} />
-        {claimedStatus === 'geclaimd' ? (
-          <View style={styles.overlayContainer} pointerEvents="none">
-            <Text style={styles.inUseText}>In gebruik door {claimedBy}</Text>
-          </View>
-        ) : (
-          <Text style={styles.availableText}>Beschikbaar</Text>
-        )}
-      </TouchableOpacity>
+     <TouchableOpacity
+  onPress={() => onZoom(cardImage)}
+  style={[
+    styles.cardImageContainer,
+    claimedStatus === 'geclaimd' ? styles.claimed : styles.available,
+    isWeb && { cursor: (claimedStatus !== 'geclaimd' || claimedBy === userName) ? 'zoom-in' : 'not-allowed' },
+  ]}
+  disabled={claimedStatus === 'geclaimd' && claimedBy !== userName} // ❗ blokkeren voor anderen
+>
+  <Image source={{ uri: cardImage }} style={styles.cardImage} />
+  {claimedStatus === 'geclaimd' ? (
+    <View style={styles.overlayContainer} pointerEvents="none">
+      <Text style={styles.inUseText}>In gebruik door {claimedBy}</Text>
+    </View>
+  ) : (
+    <Text style={styles.availableText}>Beschikbaar</Text>
+  )}
+</TouchableOpacity>
 
       {claimedStatus === 'geclaimd' && claimedAt && (
         <Text style={styles.claimedAtText}>
