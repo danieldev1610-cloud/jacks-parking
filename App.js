@@ -112,25 +112,6 @@ if (!isWeb) {
   });
 }
 
-// Testfuncties
-const testNetworkRequest = async () => {
-  try {
-    const res = await fetch('https://jsonplaceholder.typicode.com/posts/1');
-    if (!res.ok) return false;
-    await res.json();
-    return true;
-  } catch { return false; }
-};
-
-const testSupabaseConnection = async () => {
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, { method: 'GET', headers: supabaseHeaders });
-    if (!res.ok) return false;
-    await res.json();
-    return true;
-  } catch { return false; }
-};
-
 // Toegangscodes
 const accessCodes = {
   '1610': 'Daniel', '2207': 'Taylor', '1806': 'Roland', '2412': 'Lavi',
@@ -139,7 +120,7 @@ const accessCodes = {
   '1301': 'Daan', '1604': 'Isis',
 };
 
-// ===== Helpers voor tijd =====
+// Helpers voor tijd
 const fmt2 = (n) => String(n).padStart(2, '0');
 const formatHM = (ms) => {
   if (ms < 0) ms = 0;
@@ -166,9 +147,7 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
 
   const elapsedMs = claimedAt ? (nowTs - new Date(claimedAt).getTime()) : 0;
   const remainingMs = Math.max(0, MAX_MS - elapsedMs);
-  const elapsedStr = formatHM(elapsedMs);
   const remainingStr = formatHM(remainingMs);
-  const almostDone = remainingMs <= NOTIFY_BEFORE_MS && claimedStatus === 'geclaimd';
 
   const formatClaimedAt = (timestamp) => {
     if (!timestamp) return '';
@@ -192,7 +171,6 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
           claimedStatus === 'geclaimd' ? styles.claimed : styles.available,
           isWeb && { cursor: (claimedStatus !== 'geclaimd' || claimedBy === userName || userName === 'Daniel') ? 'zoom-in' : 'not-allowed' },
         ]}
-        // Daniel mag altijd interacteren, ook bij geclaimd door iemand anders
         disabled={claimedStatus === 'geclaimd' && claimedBy !== userName && userName !== 'Daniel'}
       >
         <Image source={{ uri: cardImage }} style={styles.cardImage} />
@@ -212,8 +190,8 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
               Geclaimd om {formatClaimedAt(claimedAt)} door {claimedBy}
             </Text>
           )}
-          <Text style={[styles.timerText, almostDone && { color: '#b22222', fontWeight: 'bold' }]}>
-            Tijd bezig: {elapsedStr} / {formatHM(MAX_MS)}{remainingMs === 0 ? ' • TIJD VOL' : ` • nog ${remainingStr}`}
+          <Text style={[styles.timerText, remainingMs <= 0 && { color: '#b22222', fontWeight: 'bold' }]}>
+            Reset over: {remainingStr}
           </Text>
         </View>
       )}
@@ -222,7 +200,6 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
         <TouchableOpacity onPress={() => onPress('claim')} style={styles.claimButton}>
           <Text style={styles.buttonText}>Claim</Text>
         </TouchableOpacity>
-
         <TouchableOpacity onPress={() => onPress('release')} style={styles.releaseButton}>
           <Text style={styles.buttonText}>Vrijgeven</Text>
         </TouchableOpacity>
@@ -485,31 +462,42 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
   const fadeInDownValue = useRef(new Animated.Value(0)).current;
   const backgroundAnim = useRef(new Animated.Value(0)).current;
 
-  const fetchClaims = async () => {
-    try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, { method: 'GET', headers: supabaseHeaders });
-      if (!res.ok) {
-        const errorText = await res.text();
-        setFetchError(`Error fetching claims: ${res.status} - ${errorText}`);
-        return;
-      }
-      const data = await res.json();
-      const claimsObject = {};
-      if (Array.isArray(data)) {
-        data.forEach((item) => {
-          claimsObject[item.card_key] = {
-            status: item.status,
-            claimedBy: item.claimed_by,
-            claimedAt: item.claimed_at,
-          };
-        });
-      }
-      setFetchError(null);
-      setClaimedCards(claimsObject);
-    } catch (error) {
-      setFetchError(`Error fetching claims: ${error.message}`);
+const fetchClaims = async () => {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, { method: 'GET', headers: supabaseHeaders });
+    if (!res.ok) {
+      const errorText = await res.text();
+      setFetchError(`Error fetching claims: ${res.status} - ${errorText}`);
+      return;
     }
-  };
+    const data = await res.json();
+    const claimsObject = {};
+
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        const elapsed = item.claimed_at ? (Date.now() - new Date(item.claimed_at).getTime()) : 0;
+        const remaining = MAX_MS - elapsed;
+
+        // AUTO-RESET na 10 uur
+        if (item.status === 'geclaimd' && remaining <= 0) {
+          await saveClaim(item.card_key, null);
+          continue; // skip naar volgende
+        }
+
+        claimsObject[item.card_key] = {
+          status: item.status,
+          claimedBy: item.claimed_by,
+          claimedAt: item.claimed_at,
+        };
+      }
+    }
+    setFetchError(null);
+    setClaimedCards(claimsObject);
+  } catch (error) {
+    setFetchError(`Error fetching claims: ${error.message}`);
+  }
+};
+
 
   const fetchLeaderboard = async () => {
     try {
@@ -612,6 +600,11 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
       setLoading(false);
     }
   };
+
+  const elapsed = item.claimed_at ? (Date.now() - new Date(item.claimed_at).getTime()) : 0;
+const remaining = MAX_MS - elapsed;
+
+
 
   const toggleClaim = (cardKey) => {
     const isSuperUser = userName === 'Daniel';
