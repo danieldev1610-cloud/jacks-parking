@@ -17,46 +17,12 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 
-// === CONDITIONELE IMPORTS: alleen native ===
-let Notifications: any = null;
-let TaskManager: any = null;
-
-if (Platform.OS !== 'web') {
-  // Dynamisch importeren voor native only
-  import('expo-notifications').then(mod => {
-    Notifications = mod.default;
-  });
-  import('expo-task-manager').then(mod => {
-    TaskManager = mod.default;
-  });
-} else {
-  // Web: lege stubs
-  Notifications = {
-    requestPermissionsAsync: async () => ({ status: 'granted' }),
-    scheduleNotificationAsync: async () => {},
-    setNotificationHandler: () => {},
-    registerTaskAsync: async () => {},
-  };
-  TaskManager = {
-    defineTask: () => {},
-    isTaskRegisteredAsync: async () => false,
-  };
-}
-
-// ==== SUPABASE ====
-const SUPABASE_URL = 'https://itgwuhvchxcskwelelrm.supabase.co';
-const SUPABASE_API_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0Z3d1aHZjaHhjc2t3ZWxlbHJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcyMzY0NTAsImV4cCI6MjA2MjgxMjQ1MH0.ZGrXZcNGoFiFX1KzWi_5zAT15OL2fHhENzWJg7k6vEg';
-const supabaseHeaders = {
-  apikey: SUPABASE_API_KEY,
-  Authorization: `Bearer ${SUPABASE_API_KEY}`,
-  'Content-Type': 'application/json',
-  Prefer: 'return=representation',
-};
+// === GEEN IMPORTS VAN expo-task-manager of expo-notifications ===
+// We laden ze LATER met require() alleen op native
 
 const isWeb = Platform.OS === 'web';
 
-// --- Web-safe Alert wrapper ---
+// --- Web-safe Alert ---
 const Alert = {
   alert: (title: string, message = '', buttons?: any[]) => {
     if (!isWeb) return RNAlert.alert(title, message, buttons);
@@ -76,20 +42,18 @@ const Alert = {
 async function sendNotification(title: string, body: string) {
   try {
     if (isWeb) {
-      // Web: gebruik Notification API of fallback
       if ('Notification' in window && Notification.permission === 'granted') {
         new Notification(title, { body });
       } else if (Notification.permission === 'default') {
         await Notification.requestPermission();
-        if (Notification.permission === 'granted') {
-          new Notification(title, { body });
-        } else {
-          Alert.alert(title, body);
-        }
+        if (Notification.permission === 'granted') new Notification(title, { body });
+        else Alert.alert(title, body);
       } else {
         Alert.alert(title, body);
       }
-    } else if (Notifications) {
+    } else {
+      // Native: gebruik dynamisch geladen Notifications
+      const Notifications = require('expo-notifications').default;
       await Notifications.scheduleNotificationAsync({
         content: { title, body },
         trigger: null,
@@ -100,16 +64,16 @@ async function sendNotification(title: string, body: string) {
   }
 }
 
-// Native: notificatie handler
-if (!isWeb && Notifications) {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
-  });
-}
+// ---- SUPABASE ====
+const SUPABASE_URL = 'https://itgwuhvchxcskwelelrm.supabase.co';
+const SUPABASE_API_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0Z3d1aHZjaHhjc2t3ZWxlbHJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcyMzY0NTAsImV4cCI6MjA2MjgxMjQ1MH0.ZGrXZcNGoFiFX1KzWi_5zAT15OL2fHhENzWJg7k6vEg';
+const supabaseHeaders = {
+  apikey: SUPABASE_API_KEY,
+  Authorization: `Bearer ${SUPABASE_API_KEY}`,
+  'Content-Type': 'application/json',
+  Prefer: 'return=representation',
+};
 
 // ---- Netwerk tests ----
 const testNetworkRequest = async () => {
@@ -185,7 +149,11 @@ const fmtDuration = (ms: number) => {
 // ====== AUTO RELEASE TASK (alleen native) ======
 const AUTO_RELEASE_TASK = 'auto-release-parking-cards';
 
-if (TaskManager && !isWeb) {
+if (!isWeb) {
+  // Alleen op native: laad modules en definieer task
+  const TaskManager = require('expo-task-manager').default;
+  const Notifications = require('expo-notifications').default;
+
   TaskManager.defineTask(AUTO_RELEASE_TASK, async () => {
     try {
       const sched = await loadJSON(LS_KEYS.SCHEDULES, {});
@@ -219,11 +187,13 @@ if (TaskManager && !isWeb) {
 
   // Registreer task bij opstarten
   (async () => {
-    if (TaskManager && Notifications) {
+    try {
       const isRegistered = await TaskManager.isTaskRegisteredAsync(AUTO_RELEASE_TASK);
       if (!isRegistered) {
         await Notifications.registerTaskAsync(AUTO_RELEASE_TASK);
       }
+    } catch (e) {
+      console.warn('Task registration failed:', e);
     }
   })();
 }
