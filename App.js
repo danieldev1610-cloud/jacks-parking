@@ -15,6 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 
@@ -22,7 +23,6 @@ import * as LocalAuthentication from 'expo-local-authentication';
 const SUPABASE_URL = 'https://itgwuhvchxcskwelelrm.supabase.co';
 const SUPABASE_API_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0Z3d1aHZjaHhjc2t3ZWxlbHJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcyMzY0NTAsImV4cCI6MjA2MjgxMjQ1MH0.ZGrXZcNGoFiFX1KzWi_5zAT15OL2fHhENzWJg7k6vEg';
-
 const supabaseHeaders = {
   apikey: SUPABASE_API_KEY,
   Authorization: `Bearer ${SUPABASE_API_KEY}`,
@@ -30,7 +30,6 @@ const supabaseHeaders = {
   Prefer: 'return=representation',
 };
 // =====================================
-
 const isWeb = Platform.OS === 'web';
 
 // --- Web-safe Alert wrapper ---
@@ -69,7 +68,6 @@ async function setupNotifications() {
     return false;
   }
 }
-
 async function sendNotification(title, body) {
   try {
     if (isWeb) {
@@ -109,7 +107,6 @@ const testNetworkRequest = async () => {
     return false;
   }
 };
-
 const testSupabaseConnection = async () => {
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, {
@@ -140,13 +137,14 @@ const accessCodes = {
   '2010': 'Aelita',
   '1301': 'Daan',
   '1604': 'Isis',
+  '1505': 'Anouk',
 };
 
 // ---- Lokale storage keys ----
 const LS_KEYS = {
-  USERS: 'jp_known_users',          // string[] van userName's die op dit device zijn ingelogd
-  COUNTS: 'jp_claim_counts',        // { [userName]: number }
-  SCHEDULES: 'jp_release_schedules' // { [cardKey]: timestamp_ms } gepland auto-release moment
+  USERS: 'jp_known_users',
+  COUNTS: 'jp_claim_counts',
+  SCHEDULES: 'jp_release_schedules',
 };
 
 // ---- Helpers voor AsyncStorage JSON ----
@@ -173,6 +171,55 @@ const fmtDuration = (ms) => {
   return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}`;
 };
 
+// ====== AUTO RELEASE BACKGROUND TASK ======
+const AUTO_RELEASE_TASK = 'auto-release-parking-cards';
+
+TaskManager.defineTask(AUTO_RELEASE_TASK, async () => {
+  try {
+    const sched = await loadJSON(LS_KEYS.SCHEDULES, {});
+    const now = Date.now();
+
+    for (const [cardKey, releaseAt] of Object.entries(sched)) {
+      if (now >= releaseAt) {
+        const userName = await AsyncStorage.getItem('currentUserForAutoRelease');
+        if (!userName) continue;
+
+        // Dubbelcheck of kaart nog steeds van deze user is
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?card_key=eq.${encodeURIComponent(cardKey)}&select=claimed_by`, { headers: supabaseHeaders });
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data[0]?.claimed_by !== userName) continue;
+
+        // Vrijgeven
+        await fetch(`${SUPABASE_URL}/rest/v1/claims?card_key=eq.${encodeURIComponent(cardKey)}`, {
+          method: 'PATCH',
+          headers: supabaseHeaders,
+          body: JSON.stringify({ status: 'beschikbaar', claimed_by: null, claimed_at: null }),
+        });
+
+        await sendNotification('Automatisch vrijgegeven', `${cardKey} is vrijgegeven (10 uur bereikt).`);
+
+        // Verwijder uit lokale planning
+        delete sched[cardKey];
+        await saveJSON(LS_KEYS.SCHEDULES, sched);
+      }
+    }
+  } catch (error) {
+    console.error('Auto-release task error:', error);
+  }
+  return TaskManager.TaskManagerResult.Success;
+});
+
+// Start background task (alleen native)
+if (!isWeb) {
+  (async () => {
+    const isRegistered = await TaskManager.isTaskRegisteredAsync(AUTO_RELEASE_TASK);
+    if (!isRegistered) {
+      await Notifications.registerTaskAsync(AUTO_RELEASE_TASK);
+    }
+  })();
+}
+
 // ====== Card ======
 const Card = ({
   cardName,
@@ -182,13 +229,12 @@ const Card = ({
   claimedBy,
   claimedAt,
   userName,
-  onPress,        // 'claim' | 'release'
+  onPress,
   onZoom,
-  now,            // Date.now() tick voor timers
+  now,
 }) => {
   const fadeInValue = useRef(new Animated.Value(0)).current;
   const pulseValue = useRef(new Animated.Value(1)).current;
-
   useEffect(() => {
     Animated.timing(fadeInValue, { toValue: 1, duration: 700, useNativeDriver: true }).start();
     if (claimedStatus === 'geclaimd') {
@@ -198,12 +244,9 @@ const Card = ({
       ]).start();
     }
   }, [claimedStatus]);
-
   const claimedMs = claimedAt ? (now - new Date(claimedAt).getTime()) : 0;
   const remainingMs = claimedStatus === 'geclaimd' ? (TEN_HOURS_MS - claimedMs) : 0;
-
   const isImageClickable = claimedStatus !== 'geclaimd' || claimedBy === userName;
-
   return (
     <Animated.View
       style={[
@@ -212,7 +255,6 @@ const Card = ({
       ]}
     >
       <Text style={styles.cardName}>{cardName}</Text>
-
       <TouchableOpacity
         onPress={isImageClickable ? () => onZoom(cardImage) : null}
         style={[
@@ -231,17 +273,13 @@ const Card = ({
           <Text style={styles.availableText}>Beschikbaar</Text>
         )}
       </TouchableOpacity>
-
-      {/* Timer info */}
       {claimedStatus === 'geclaimd' && (
         <View style={{ alignItems: 'center', marginTop: 6 }}>
           <Text style={styles.timerText}>
-            Sinds: {fmtDuration(claimedMs)}  •  Rest: {fmtDuration(remainingMs)}
+            Sinds: {fmtDuration(claimedMs)} • Rest: {fmtDuration(remainingMs)}
           </Text>
         </View>
       )}
-
-      {/* Knoppen */}
       <View style={styles.cardButtons}>
         <TouchableOpacity
           onPress={() => onPress('claim')}
@@ -252,7 +290,6 @@ const Card = ({
         >
           <Text style={styles.buttonText}>Claim</Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           onPress={() => onPress('release')}
           style={[
@@ -276,7 +313,6 @@ const ParkingApp = () => {
   const [networkStatus, setNetworkStatus] = useState(null);
   const [hasSavedCode, setHasSavedCode] = useState(false);
   const [biometricSupported, setBiometricSupported] = useState(false);
-
   const fadeInUpValue = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -290,23 +326,24 @@ const ParkingApp = () => {
       }
 
       const savedCode = await AsyncStorage.getItem('userCode');
-      if (savedCode) {
-        setCode(savedCode);
+      if (savedCode && accessCodes[savedCode]) {
+        const name = accessCodes[savedCode];
+        await addKnownUser(name);
+        setUserName(name);
+        await ensureUserExists(name);
+        const currentTime = new Date();
+        setLoginTime(currentTime);
+        await updateUserLastLogin(name, currentTime);
+        setLoggedIn(true);
         setHasSavedCode(true);
-        if (accessCodes[savedCode]) {
-          const name = accessCodes[savedCode];
-          await addKnownUser(name);     // <- voor leaderboard lijst
-          setUserName(name);
-          const userAdded = await ensureUserExists(name);
-          if (!userAdded) {
-            Alert.alert('Fout', 'Kon gebruiker niet toevoegen aan de database. Check de logs.');
-            return;
-          }
-          const currentTime = new Date();
-          setLoginTime(currentTime);
-          await updateUserLastLogin(name, currentTime);
-          setLoggedIn(true);
-        }
+
+        // Sla huidige gebruiker op voor background task
+        await AsyncStorage.setItem('currentUserForAutoRelease', name);
+
+        // Start background auto-release check
+        await startAutoReleaseCheck();
+      } else {
+        setHasSavedCode(!!savedCode);
       }
 
       Animated.timing(fadeInUpValue, { toValue: 1, duration: 1200, useNativeDriver: true }).start();
@@ -324,10 +361,42 @@ const ParkingApp = () => {
         await setupNotifications();
       };
       checkConnections();
-    };
 
+      // Controleer bij opstarten of er verlopen claims zijn
+      await checkExpiredClaimsOnStartup();
+    };
     initializeApp();
   }, []);
+
+  const startAutoReleaseCheck = async () => {
+    if (isWeb) return;
+    try {
+      await Notifications.startBackgroundTaskAsync(AUTO_RELEASE_TASK);
+    } catch (e) {
+      console.warn('Could not start background task:', e);
+    }
+  };
+
+  const checkExpiredClaimsOnStartup = async () => {
+    const sched = await loadJSON(LS_KEYS.SCHEDULES, {});
+    const now = Date.now();
+    for (const [cardKey, releaseAt] of Object.entries(sched)) {
+      if (now >= releaseAt) {
+        const userName = await AsyncStorage.getItem('currentUserForAutoRelease');
+        if (!userName) continue;
+
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?card_key=eq.${encodeURIComponent(cardKey)}&select=claimed_by`, { headers: supabaseHeaders });
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data[0]?.claimed_by === userName) {
+          await saveClaim(cardKey, null);
+          await sendNotification('Automatisch vrijgegeven', `${cardKey} is vrijgegeven (10 uur bereikt).`);
+          delete sched[cardKey];
+          await saveJSON(LS_KEYS.SCHEDULES, sched);
+        }
+      }
+    }
+  };
 
   const handleFaceIDLogin = async () => {
     try {
@@ -345,15 +414,13 @@ const ParkingApp = () => {
           const name = accessCodes[savedCode];
           await addKnownUser(name);
           setUserName(name);
-          const userAdded = await ensureUserExists(name);
-          if (!userAdded) {
-            Alert.alert('Fout', 'Kon gebruiker niet toevoegen aan de database. Check de logs.');
-            return;
-          }
+          await ensureUserExists(name);
           const currentTime = new Date();
           setLoginTime(currentTime);
           await updateUserLastLogin(name, currentTime);
           setLoggedIn(true);
+          await AsyncStorage.setItem('currentUserForAutoRelease', name);
+          await startAutoReleaseCheck();
         } else {
           Alert.alert('Fout', 'Geen opgeslagen code gevonden. Log eerst handmatig in.');
         }
@@ -371,17 +438,15 @@ const ParkingApp = () => {
       const name = accessCodes[code];
       await addKnownUser(name);
       setUserName(name);
-      const userAdded = await ensureUserExists(name);
-      if (!userAdded) {
-        Alert.alert('Fout', 'Kon gebruiker niet toevoegen aan de database. Check de logs.');
-        return;
-      }
+      await ensureUserExists(name);
       const currentTime = new Date();
       setLoginTime(currentTime);
       await updateUserLastLogin(name, currentTime);
       await AsyncStorage.setItem('userCode', code);
+      await AsyncStorage.setItem('currentUserForAutoRelease', name);
       setHasSavedCode(true);
       setLoggedIn(true);
+      await startAutoReleaseCheck();
     } else {
       Alert.alert('Oeps', 'De ingevoerde code is onjuist.');
     }
@@ -389,6 +454,7 @@ const ParkingApp = () => {
 
   const handleLogout = async () => {
     await AsyncStorage.removeItem('userCode');
+    await AsyncStorage.removeItem('currentUserForAutoRelease');
     setHasSavedCode(false);
     setLoggedIn(false);
     setCode('');
@@ -508,12 +574,14 @@ const addKnownUser = async (name) => {
     await saveJSON(LS_KEYS.USERS, users);
   }
 };
+
 const incrementClaimCount = async (name) => {
   const counts = await loadJSON(LS_KEYS.COUNTS, {});
   counts[name] = (counts[name] || 0) + 1;
   await saveJSON(LS_KEYS.COUNTS, counts);
   return counts[name];
 };
+
 const getLeaderboard = async () => {
   const users = await loadJSON(LS_KEYS.USERS, []);
   const counts = await loadJSON(LS_KEYS.COUNTS, {});
@@ -521,11 +589,13 @@ const getLeaderboard = async () => {
   rows.sort((a, b) => b.count - a.count || a.user.localeCompare(b.user));
   return rows;
 };
+
 const setReleaseSchedule = async (cardKey, ts) => {
   const sched = await loadJSON(LS_KEYS.SCHEDULES, {});
   sched[cardKey] = ts;
   await saveJSON(LS_KEYS.SCHEDULES, sched);
 };
+
 const getReleaseSchedule = async () => loadJSON(LS_KEYS.SCHEDULES, {});
 
 // ====== Dashboard ======
@@ -538,17 +608,14 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
   const [showBoard, setShowBoard] = useState(false);
   const [boardRows, setBoardRows] = useState([]);
   const [now, setNow] = useState(Date.now());
-
   const fadeInDownValue = useRef(new Animated.Value(0)).current;
   const backgroundAnim = useRef(new Animated.Value(0)).current;
 
-  // Tick elke seconde voor timers
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // Claims ophalen + poll
   const fetchClaims = async () => {
     try {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, { method: 'GET', headers: supabaseHeaders });
@@ -582,33 +649,6 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     return () => clearInterval(interval);
   }, []);
 
-  // Auto-vrijgave zodra 10 uur voorbij is (ook als app heropent)
-  useEffect(() => {
-    const checkAutoRelease = async () => {
-      const sched = await getReleaseSchedule();
-      const entries = Object.entries(claimedCards);
-      for (const [cardKey, v] of entries) {
-        if (v?.status === 'geclaimd' && v?.claimedAt) {
-          const claimedAtMs = new Date(v.claimedAt).getTime();
-          const target = claimedAtMs + TEN_HOURS_MS;
-          // sla geplande release lokaal op (handig voor gedachte)
-          if (!sched[cardKey] || Math.abs(sched[cardKey] - target) > 1000) {
-            await setReleaseSchedule(cardKey, target);
-          }
-          // als voorbij en van mij -> vrijgeven
-          if (Date.now() >= target && v.claimedBy === userName) {
-            await sendNotification('Automatisch vrijgegeven', `${cardKey} is vrijgegeven (10 uur bereikt).`);
-            await saveClaim(cardKey, null);
-          }
-        }
-      }
-    };
-    checkAutoRelease();
-    // run ook elke 30s onafhankelijk van de 2s poll
-    const t = setInterval(checkAutoRelease, 30000);
-    return () => clearInterval(t);
-  }, [claimedCards, userName]);
-
   const animateBackground = (color) => {
     setBackgroundColor(color);
     Animated.timing(backgroundAnim, { toValue: 1, duration: 300, useNativeDriver: false }).start(() => {
@@ -626,11 +666,9 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     try {
       const newStatus = claimedBy ? 'geclaimd' : 'beschikbaar';
       const currentTime = new Date().toISOString();
-
       const resSelect = await fetch(`${SUPABASE_URL}/rest/v1/claims?card_key=eq.${encodeURIComponent(cardKey)}`, { method: 'GET', headers: supabaseHeaders });
       if (!resSelect.ok) throw new Error(`Select failed: ${resSelect.statusText}`);
       const data = await resSelect.json();
-
       if (data && data.length > 0) {
         const resUpdate = await fetch(`${SUPABASE_URL}/rest/v1/claims?card_key=eq.${encodeURIComponent(cardKey)}`, {
           method: 'PATCH',
@@ -652,32 +690,21 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
       const cardName = { card1: 'parkeerkaart 1', card2: 'parkeerkaart 2', card3: 'parkeerkaart 3', card4: 'parkeerkaart 4' }[cardKey];
 
       if (claimedBy) {
-        // Leaderboard lokaal +1
         await incrementClaimCount(claimedBy);
         await refreshLeaderboard();
-
         await sendNotification(`${cardName} geclaimd!`, `${claimedBy} heeft ${cardName} geclaimd.`);
         animateBackground('#ff6666');
-        // Plan lokale timeout (alleen zolang app open is)
+
+        // Plan release
         const releaseAt = Date.now() + TEN_HOURS_MS;
         await setReleaseSchedule(cardKey, releaseAt);
-        setTimeout(async () => {
-          // extra safeguard (als nog steeds van mij)
-          const latest = await getLatestClaim(cardKey);
-          if (latest?.claimedBy === userName && latest?.status === 'geclaimd') {
-            await sendNotification('Automatisch vrijgegeven', `${cardName} is vrijgegeven (10 uur bereikt).`);
-            await saveClaim(cardKey, null);
-          }
-        }, TEN_HOURS_MS);
       } else {
         await sendNotification(`${cardName} beschikbaar!`, `${cardName} is nu weer beschikbaar.`);
         animateBackground('#66ff66');
-        // verwijder lokaal schema
         const sched = await loadJSON(LS_KEYS.SCHEDULES, {});
         delete sched[cardKey];
         await saveJSON(LS_KEYS.SCHEDULES, sched);
       }
-
       await fetchClaims();
     } catch (error) {
       console.error('Error in saveClaim:', error.message);
@@ -687,20 +714,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     }
   };
 
-  // kleine helper om laatste status van één kaart te lezen (voor timeout safeguard)
-  const getLatestClaim = async (cardKey) => {
-    try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?card_key=eq.${encodeURIComponent(cardKey)}&select=*`, { headers: supabaseHeaders });
-      if (!res.ok) return null;
-      const data = await res.json();
-      return data?.[0] || null;
-    } catch {
-      return null;
-    }
-  };
-
   const toggleClaim = (cardKey) => {
-    // Mag maar 1 kaart tegelijk
     const userClaimed = Object.entries(claimedCards).find(([key, value]) => value.claimedBy === userName && key !== cardKey && value.status === 'geclaimd');
     if (userClaimed) {
       Alert.alert('Fout', 'Je hebt al een kaart geclaimd.');
@@ -736,12 +750,12 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
 
   const availableCards = Object.values(claimedCards).filter((card) => card.status !== 'geclaimd').length;
 
-  // Leaderboard modal helpers
   const openLeaderboard = async () => {
     const rows = await getLeaderboard();
     setBoardRows(rows);
     setShowBoard(true);
   };
+
   const refreshLeaderboard = async () => {
     const rows = await getLeaderboard();
     setBoardRows(rows);
@@ -778,7 +792,6 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
 
   return (
     <Animated.View style={[styles.dashboardContainer, { backgroundColor: backgroundColorInterpolate }]}>
-      {/* Zoom modal */}
       <Modal
         visible={zoomedImage !== null}
         transparent
@@ -794,7 +807,6 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
         </View>
       </Modal>
 
-      {/* Leaderboard modal */}
       <Modal
         visible={showBoard}
         transparent
@@ -803,7 +815,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
       >
         <View style={styles.lbBackdrop}>
           <View style={styles.lbCard}>
-            <Text style={styles.lbTitle}>🏆 Leaderboard</Text>
+            <Text style={styles.lbTitle}>Leaderboard</Text>
             <ScrollView style={{ maxHeight: 320 }}>
               {boardRows.length === 0 ? (
                 <Text style={{ textAlign: 'center', color: '#555' }}>Nog geen data</Text>
@@ -828,7 +840,6 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
         </View>
       </Modal>
 
-      {/* Content */}
       <View style={styles.contentContainer}>
         <Animated.Text
           style={[
@@ -848,7 +859,6 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
             Ingelogd op: {loginTime.toLocaleTimeString()}
           </Animated.Text>
         )}
-
         <Animated.Text
           style={[
             styles.availableTextCount,
@@ -857,7 +867,6 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
         >
           Beschikbare kaarten: {availableCards}/4
         </Animated.Text>
-
         <View style={styles.cardsContainer}>
           <View style={styles.cardsRowCentered}>
             <Card
@@ -912,13 +921,11 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
             />
           </View>
         </View>
-
         <TouchableOpacity onPress={onLogout} style={[styles.logoutButton, isWeb && { cursor: 'pointer' }]}>
           <Text style={styles.logoutButtonText}>Uitloggen</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Floating Leaderboard Button */}
       <TouchableOpacity
         onPress={openLeaderboard}
         style={[
@@ -927,7 +934,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
         ]}
         activeOpacity={0.85}
       >
-        <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 18 }}>🏆</Text>
+        <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 18 }}>Trophy</Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -970,13 +977,11 @@ const styles = StyleSheet.create({
   errorText: { color: 'yellow', marginTop: 10, fontSize: 14, textAlign: 'center' },
   retryButton: { marginTop: 20, padding: 10, borderRadius: 5, backgroundColor: '#008000', alignItems: 'center' },
   retryButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-
   dashboardContainer: { flex: 1 },
   contentContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   welcomeText: { fontSize: 20, fontWeight: 'bold', marginBottom: 5, color: '#333' },
   loginTime: { fontSize: 14, color: '#666', marginBottom: 10 },
   availableTextCount: { fontSize: 16, color: '#555', marginBottom: 10, fontWeight: 'bold' },
-
   cardsContainer: { alignItems: 'center', marginVertical: 20 },
   cardsRowCentered: { flexDirection: 'row', justifyContent: 'center', width: '100%', marginVertical: 10, gap: 20 },
   cardContainer: { alignItems: 'center', marginHorizontal: 10, width: '40%' },
@@ -990,28 +995,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 0, 0, 0.8)', justifyContent: 'center', alignItems: 'center',
   },
   inUseText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  claimedAtText: { fontSize: 10, color: '#999', marginTop: 3, textAlign: 'center' },
   availableText: {
     position: 'absolute', bottom: 10, left: '50%', transform: [{ translateX: -50 }],
     color: 'white', backgroundColor: 'rgba(0, 128, 0, 0.8)', paddingHorizontal: 5, borderRadius: 3,
   },
   timerText: { fontSize: 12, color: '#444', marginTop: 2 },
-
   cardButtons: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 10 },
   claimButton: { backgroundColor: '#b22222', padding: 10, borderRadius: 5, marginTop: 10, flex: 1, marginRight: 6, alignItems: 'center' },
   releaseButton: { backgroundColor: '#008000', padding: 10, borderRadius: 5, marginTop: 10, flex: 1, marginLeft: 6, alignItems: 'center' },
-  disabledButton: { backgroundColor: '#ccc' },
   buttonText: { color: '#fff', fontSize: 14, textAlign: 'center' },
-
   logoutButton: { marginTop: 20, padding: 10, borderRadius: 5, backgroundColor: '#b22222', alignItems: 'center' },
   logoutButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-
   modalBackground: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.8)', justifyContent: 'center', alignItems: 'center' },
   scrollZoomContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   zoomedImage: { width: Dimensions.get('window').width, height: Dimensions.get('window').height },
   loadingText: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-
-  // Leaderboard modal
   lbBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 18 },
   lbCard: { width: '90%', maxWidth: 420, backgroundColor: '#fff', borderRadius: 14, padding: 16, borderWidth: 2, borderColor: '#b22222' },
   lbTitle: { fontSize: 20, fontWeight: 'bold', color: '#b22222', marginBottom: 10, textAlign: 'center' },
@@ -1020,8 +1018,6 @@ const styles = StyleSheet.create({
   lbCount: { fontSize: 16, color: '#b22222', fontWeight: '700' },
   lbBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
   lbBtnText: { color: '#fff', fontWeight: '700' },
-
-  // Floating Action Button
   fab: {
     position: 'absolute', right: 18, bottom: 18,
     width: 56, height: 56, borderRadius: 28,
