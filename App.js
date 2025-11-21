@@ -98,7 +98,7 @@ const LS_KEYS = { USERS: 'jp_known_users', COUNTS: 'jp_claim_counts' };
 const loadJSON = async (key, fallback) => { try { const v = await AsyncStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } };
 const saveJSON = async (key, obj) => { try { await AsyncStorage.setItem(key, JSON.stringify(obj)); } catch {} };
 
-const TEN_HOURS_MS = 30 * 1000;   // 30 seconden              //const TEN_HOURS_MS = 10 * 60 * 60 * 1000;//
+const TEN_HOURS_MS = 10 * 60 * 60 * 1000;
 const pad2 = n => (n < 10 ? `0${n}` : `${n}`);
 const fmtDuration = (ms) => {
   if (ms < 0) ms = 0;
@@ -346,7 +346,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     return () => clearInterval(interval);
   }, []);
 
-  // NIEUWE AUTO-RELEASE: WERKT VOOR IEDEREEN, ALTIJD
+ 
   useEffect(() => {
     const checkAndRelease = async () => {
       for (const [cardKey, v] of Object.entries(claimedCards)) {
@@ -354,14 +354,13 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
           const claimedAtMs = new Date(v.claimedAt).getTime();
           if (Date.now() >= claimedAtMs + TEN_HOURS_MS) {
             const cardName = { card1: 'parkeerkaart 1', card2: 'parkeerkaart 2', card3: 'parkeerkaart 3', card4: 'parkeerkaart 4' }[cardKey];
-            await sendNotification('Automatisch vrijgegeven', `${cardName} is na 10 uur vrij.`);
             await saveClaim(cardKey, null);
           }
         }
       }
     };
     checkAndRelease();
-    const interval = setInterval(checkAndRelease, 5000);     //const interval = setInterval(checkAndRelease, 30000);//
+    const interval = setInterval(checkAndRelease, 30000);
     return () => clearInterval(interval);
   }, [claimedCards]);
 
