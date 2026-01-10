@@ -10,6 +10,7 @@ import {
   Modal,
   TouchableWithoutFeedback,
   ScrollView,
+  Dimensions,
   Animated,
   Platform,
 } from 'react-native';
@@ -17,10 +18,74 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 
-// === SUPABASE ===
+// ====================== STYLES ======================
+const styles = StyleSheet.create({
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  formContainer: {
+    width: '90%',
+    maxWidth: 400,
+    padding: 25,
+    borderRadius: 15,
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.7,
+    shadowRadius: 18,
+    elevation: 20,
+    alignItems: 'center',
+  },
+  logo: { width: 120, height: 120, marginBottom: 15, borderRadius: 60, borderWidth: 2, borderColor: '#b22222' },
+  header: { fontSize: 28, fontWeight: 'bold', color: '#333', marginBottom: 10, textAlign: 'center' },
+  label: { fontSize: 16, marginBottom: 10, color: '#555' },
+  input: { width: '100%', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 20, backgroundColor: '#fefefe' },
+  loginButton: { width: '100%', paddingVertical: 15, borderRadius: 8, backgroundColor: '#b22222', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.8, shadowRadius: 10, elevation: 15 },
+  loginButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  faceIDButton: { width: '100%', paddingVertical: 15, borderRadius: 8, backgroundColor: '#555', alignItems: 'center', marginTop: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.8, shadowRadius: 10, elevation: 15 },
+  faceIDButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  errorText: { color: 'yellow', marginTop: 10, fontSize: 14, textAlign: 'center' },
+  retryButton: { marginTop: 20, padding: 10, borderRadius: 5, backgroundColor: '#008000', alignItems: 'center' },
+  retryButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  dashboardContainer: { flex: 1 },
+  contentContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  welcomeText: { fontSize: 20, fontWeight: 'bold', marginBottom: 5, color: '#333' },
+  loginTime: { fontSize: 14, color: '#666', marginBottom: 10 },
+  availableTextCount: { fontSize: 16, color: '#555', marginBottom: 10, fontWeight: 'bold' },
+  cardsContainer: { alignItems: 'center', marginVertical: 20 },
+  cardsRowCentered: { flexDirection: 'row', justifyContent: 'center', width: '100%', marginVertical: 10, gap: 20 },
+  cardContainer: { alignItems: 'center', marginHorizontal: 10, width: '40%' },
+  cardName: { fontSize: 16, marginBottom: 10, color: '#333' },
+  cardImageContainer: { width: 150, height: 150, borderRadius: 10, overflow: 'hidden', borderWidth: 4 },
+  cardImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  claimed: { borderColor: 'red' },
+  available: { borderColor: 'green' },
+  overlayContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255, 0, 0, 0.8)', justifyContent: 'center', alignItems: 'center' },
+  inUseText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  availableText: { position: 'absolute', bottom: 10, left: '50%', transform: [{ translateX: -50 }], color: 'white', backgroundColor: 'rgba(0, 128, 0, 0.8)', paddingHorizontal: 5, borderRadius: 3 },
+  timerText: { fontSize: 12, color: '#444', marginTop: 2 },
+  cardButtons: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 10 },
+  claimButton: { backgroundColor: '#b22222', padding: 10, borderRadius: 5, marginTop: 10, flex: 1, marginRight: 6, alignItems: 'center' },
+  releaseButton: { backgroundColor: '#008000', padding: 10, borderRadius: 5, marginTop: 10, flex: 1, marginLeft: 6, alignItems: 'center' },
+  buttonText: { color: '#fff', fontSize: 14, textAlign: 'center' },
+  logoutButton: { marginTop: 20, padding: 10, borderRadius: 5, backgroundColor: '#b22222', alignItems: 'center' },
+  logoutButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  modalBackground: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' },
+  scrollZoomContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  zoomedImage: { width: Dimensions.get('window').width, height: Dimensions.get('window').height },
+  loadingText: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  lbBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 18 },
+  lbCard: { width: '90%', maxWidth: 420, backgroundColor: '#fff', borderRadius: 14, padding: 16, borderWidth: 2, borderColor: '#b22222' },
+  lbTitle: { fontSize: 20, fontWeight: 'bold', color: '#b22222', marginBottom: 10, textAlign: 'center' },
+  lbRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  lbUser: { fontSize: 16, color: '#222', fontWeight: '600' },
+  lbCount: { fontSize: 16, color: '#b22222', fontWeight: '700' },
+  lbBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
+  lbBtnText: { color: '#fff', fontWeight: '700' },
+  fab: { position: 'absolute', right: 18, bottom: 18, width: 56, height: 56, borderRadius: 28, backgroundColor: '#b22222', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowOffset: { width: 0, height: 6 }, shadowRadius: 8, elevation: 10 },
+});
+
+// ====================== CONFIG ======================
 const SUPABASE_URL = 'https://itgwuhvchxcskwelelrm.supabase.co';
-const SUPABASE_API_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0Z3d1aHZjaHhjc2t3ZWxlbHJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcyMzY0NTAsImV4cCI6MjA2MjgxMjQ1MH0.ZGrXZcNGoFiFX1KzWi_5zAT15OL2fHhENzWJg7k6vEg';
+const SUPABASE_API_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0Z3d1aHZjaHhjc2t3ZWxlbHJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcyMzY0NTAsImV4cCI6MjA2MjgxMjQ1MH0.ZGrXZcNGoFiFX1KzWi_5zAT15OL2fHhENzWJg7k6vEg';
 
 const supabaseHeaders = {
   apikey: SUPABASE_API_KEY,
@@ -31,16 +96,13 @@ const supabaseHeaders = {
 
 const isWeb = Platform.OS === 'web';
 
-// === ALERT HELPER ===
+// ====================== HELPERS ======================
 const Alert = {
   alert: (title, message = '', buttons) => {
     if (!isWeb) return RNAlert.alert(title, message, buttons);
-
     if (Array.isArray(buttons) && buttons.length) {
       const yes = buttons.find(b => b.text?.toLowerCase() === 'ja' || b.onPress);
-      const cancel = buttons.find(
-        b => b.style === 'cancel' || b.text?.toLowerCase() === 'annuleren'
-      );
+      const cancel = buttons.find(b => b.style === 'cancel' || b.text?.toLowerCase() === 'annuleren');
       const ok = window.confirm(`${title}\n\n${message}`);
       if (ok && yes?.onPress) yes.onPress();
       if (!ok && cancel?.onPress) cancel.onPress();
@@ -50,22 +112,18 @@ const Alert = {
   },
 };
 
-// === NOTIFICATIONS ===
 async function setupNotifications() {
   try {
     if (isWeb) {
-      if ('Notification' in window && Notification.permission === 'default') {
-        await Notification.requestPermission();
-      }
-      return true;
-    } else {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Fout', 'Geen toestemming voor notificaties.');
-        return false;
-      }
+      if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
       return true;
     }
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Fout', 'Geen toestemming voor notificaties.');
+      return false;
+    }
+    return true;
   } catch {
     return false;
   }
@@ -80,25 +138,17 @@ async function sendNotification(title, body) {
         Alert.alert(title, body);
       }
     } else {
-      await Notifications.scheduleNotificationAsync({
-        content: { title, body },
-        trigger: null,
-      });
+      await Notifications.scheduleNotificationAsync({ content: { title, body }, trigger: null });
     }
   } catch {}
 }
 
 if (!isWeb) {
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
+    handleNotification: async () => ({ shouldShowAlert: true, shouldPlaySound: true, shouldSetBadge: false }),
   });
 }
 
-// === CONNECTIVITY CHECKS ===
 const testNetworkRequest = async () => {
   try {
     const res = await fetch('https://jsonplaceholder.typicode.com/posts/1');
@@ -110,16 +160,13 @@ const testNetworkRequest = async () => {
 
 const testSupabaseConnection = async () => {
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, {
-      headers: supabaseHeaders,
-    });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, { headers: supabaseHeaders });
     return res.ok;
   } catch {
     return false;
   }
 };
 
-// === Gebruikers ===
 const accessCodes = {
   '1610': 'Daniel',
   '2207': 'Taylor',
@@ -138,11 +185,7 @@ const accessCodes = {
   '1505': 'Anouk',
 };
 
-// === LOCAL STORAGE KEYS ===
-const LS_KEYS = {
-  USERS: 'jp_known_users',
-  COUNTS: 'jp_claim_counts',
-};
+const LS_KEYS = { USERS: 'jp_known_users', COUNTS: 'jp_claim_counts' };
 
 const loadJSON = async (key, fallback) => {
   try {
@@ -160,9 +203,7 @@ const saveJSON = async (key, obj) => {
 };
 
 const TEN_HOURS_MS = 10 * 60 * 60 * 1000;
-
 const pad2 = n => (n < 10 ? `0${n}` : `${n}`);
-
 const fmtDuration = ms => {
   if (ms < 0) ms = 0;
   const hh = Math.floor(ms / 3600000);
@@ -171,18 +212,13 @@ const fmtDuration = ms => {
   return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}`;
 };
 
-// === CARD COMPONENT ===
+// ====================== CARD COMPONENT ======================
 const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedAt, userName, onPress, onZoom, now }) => {
   const fadeInValue = useRef(new Animated.Value(0)).current;
   const pulseValue = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    Animated.timing(fadeInValue, {
-      toValue: 1,
-      duration: 700,
-      useNativeDriver: true,
-    }).start();
-
+    Animated.timing(fadeInValue, { toValue: 1, duration: 700, useNativeDriver: true }).start();
     if (claimedStatus === 'geclaimd') {
       Animated.sequence([
         Animated.timing(pulseValue, { toValue: 1.05, duration: 400, useNativeDriver: true }),
@@ -249,7 +285,7 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
   );
 };
 
-// === DB HELPERS ===
+// ====================== DB HELPERS ======================
 const ensureUserExists = async username => {
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/users?username=eq.${encodeURIComponent(username)}`, {
@@ -305,7 +341,7 @@ const getLeaderboard = async () => {
   return rows;
 };
 
-// === MAIN APP ===
+// ====================== MAIN APP ======================
 const ParkingApp = () => {
   const [loggedIn, setLoggedIn] = useState(false);
   const [code, setCode] = useState('');
@@ -340,11 +376,7 @@ const ParkingApp = () => {
         setLoggedIn(true);
       }
 
-      Animated.timing(fadeInUpValue, {
-        toValue: 1,
-        duration: 1200,
-        useNativeDriver: true,
-      }).start();
+      Animated.timing(fadeInUpValue, { toValue: 1, duration: 1200, useNativeDriver: true }).start();
 
       const net = await testNetworkRequest();
       setNetworkStatus(net);
@@ -412,21 +444,12 @@ const ParkingApp = () => {
             styles.formContainer,
             {
               opacity: fadeInUpValue,
-              transform: [
-                {
-                  translateY: fadeInUpValue.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [50, 0],
-                  }),
-                },
-              ],
+              transform: [{ translateY: fadeInUpValue.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) }],
             },
           ]}
         >
           <Image
-            source={{
-              uri: 'https://media.glassdoor.com/sqll/1075020/jvh-gaming-en-entertainment-squarelogo-1533909494473.png',
-            }}
+            source={{ uri: 'https://media.glassdoor.com/sqll/1075020/jvh-gaming-en-entertainment-squarelogo-1533909494473.png' }}
             style={styles.logo}
           />
           <Text style={styles.header}>Welkom bij Jack's Parking!</Text>
@@ -439,10 +462,7 @@ const ParkingApp = () => {
             style={styles.input}
             keyboardType="numeric"
           />
-          <TouchableOpacity
-            onPress={handleLogin}
-            style={[styles.loginButton, isWeb && { cursor: 'pointer' }]}
-          >
+          <TouchableOpacity onPress={handleLogin} style={[styles.loginButton, isWeb && { cursor: 'pointer' }]}>
             <Text style={styles.loginButtonText}>Inloggen</Text>
           </TouchableOpacity>
 
@@ -466,7 +486,7 @@ const ParkingApp = () => {
   return <Dashboard onLogout={handleLogout} userName={userName} loginTime={loginTime} />;
 };
 
-// === DASHBOARD ===
+// ====================== DASHBOARD ======================
 const Dashboard = ({ onLogout, userName, loginTime }) => {
   const [claimedCards, setClaimedCards] = useState({});
   const [loading, setLoading] = useState(false);
@@ -487,18 +507,12 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
 
   const fetchClaims = async () => {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, {
-        headers: supabaseHeaders,
-      });
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, { headers: supabaseHeaders });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const obj = {};
       data.forEach(item => {
-        obj[item.card_key] = {
-          status: item.status,
-          claimedBy: item.claimed_by,
-          claimedAt: item.claimed_at,
-        };
+        obj[item.card_key] = { status: item.status, claimedBy: item.claimed_by, claimedAt: item.claimed_at };
       });
       setClaimedCards(obj);
       setFetchError(null);
@@ -508,12 +522,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
   };
 
   useEffect(() => {
-    Animated.timing(fadeInDownValue, {
-      toValue: 1,
-      duration: 800,
-      useNativeDriver: true,
-    }).start();
-
+    Animated.timing(fadeInDownValue, { toValue: 1, duration: 800, useNativeDriver: true }).start();
     fetchClaims();
     const interval = setInterval(fetchClaims, 2000);
     return () => clearInterval(interval);
@@ -530,7 +539,6 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
         }
       }
     };
-
     checkAndRelease();
     const interval = setInterval(checkAndRelease, 30000);
     return () => clearInterval(interval);
@@ -538,16 +546,10 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
 
   const animateBackground = color => {
     setBackgroundColor(color);
-    Animated.timing(backgroundAnim, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: false,
-    }).start(() =>
-      Animated.timing(backgroundAnim, {
-        toValue: 0,
-        duration: 400,
-        useNativeDriver: false,
-      }).start(() => setBackgroundColor('#f0f0f0'))
+    Animated.timing(backgroundAnim, { toValue: 1, duration: 300, useNativeDriver: false }).start(() =>
+      Animated.timing(backgroundAnim, { toValue: 0, duration: 400, useNativeDriver: false }).start(() =>
+        setBackgroundColor('#f0f0f0')
+      )
     );
   };
 
@@ -562,40 +564,24 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
       const newStatus = claimedBy ? 'geclaimd' : 'beschikbaar';
       const currentTime = new Date().toISOString();
 
-      const selectRes = await fetch(`${SUPABASE_URL}/rest/v1/claims?card_key=eq.${cardKey}`, {
-        headers: supabaseHeaders,
-      });
+      const selectRes = await fetch(`${SUPABASE_URL}/rest/v1/claims?card_key=eq.${cardKey}`, { headers: supabaseHeaders });
       const data = await selectRes.json();
 
       if (data.length > 0) {
         await fetch(`${SUPABASE_URL}/rest/v1/claims?card_key=eq.${cardKey}`, {
           method: 'PATCH',
           headers: supabaseHeaders,
-          body: JSON.stringify({
-            status: newStatus,
-            claimed_by: claimedBy,
-            claimed_at: claimedBy ? currentTime : null,
-          }),
+          body: JSON.stringify({ status: newStatus, claimed_by: claimedBy, claimed_at: claimedBy ? currentTime : null }),
         });
       } else {
         await fetch(`${SUPABASE_URL}/rest/v1/claims`, {
           method: 'POST',
           headers: supabaseHeaders,
-          body: JSON.stringify({
-            card_key: cardKey,
-            status: newStatus,
-            claimed_by: claimedBy,
-            claimed_at: claimedBy ? currentTime : null,
-          }),
+          body: JSON.stringify({ card_key: cardKey, status: newStatus, claimed_by: claimedBy, claimed_at: claimedBy ? currentTime : null }),
         });
       }
 
-      const cardName = {
-        card1: 'parkeerkaart 1',
-        card2: 'parkeerkaart 2',
-        card3: 'parkeerkaart 3',
-        card4: 'parkeerkaart 4',
-      }[cardKey];
+      const cardName = { card1: 'parkeerkaart 1', card2: 'parkeerkaart 2', card3: 'parkeerkaart 3', card4: 'parkeerkaart 4' }[cardKey];
 
       if (claimedBy) {
         await incrementClaimCount(claimedBy);
@@ -630,9 +616,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
   };
 
   const toggleRelease = cardKey => {
-    if (claimedCards[cardKey]?.claimedBy !== userName) {
-      return Alert.alert('Nee', 'Alleen de eigenaar kan vrijgeven.');
-    }
+    if (claimedCards[cardKey]?.claimedBy !== userName) return Alert.alert('Nee', 'Alleen de eigenaar kan vrijgeven.');
 
     Alert.alert('Vrijgeven', 'Weet je het zeker?', [
       { text: 'Nee', style: 'cancel' },
@@ -657,15 +641,9 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     setShowBoard(true);
   };
 
-  const refreshLeaderboard = async () => {
-    setBoardRows(await getLeaderboard());
-  };
+  const refreshLeaderboard = async () => setBoardRows(await getLeaderboard());
 
-  if (loading) return (
-    <View style={styles.container}>
-      <Text style={styles.loadingText}>Laden...</Text>
-    </View>
-  );
+  if (loading) return <View style={styles.container}><Text style={styles.loadingText}>Laden...</Text></View>;
 
   if (fetchError) return (
     <View style={[styles.container, { backgroundColor: '#b22222' }]}>
@@ -681,7 +659,6 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
 
   return (
     <Animated.View style={[styles.dashboardContainer, { backgroundColor: backgroundColorInterpolate }]}>
-      {/* ZOOM MODAL */}
       <Modal visible={!!zoomedImage} transparent animationType="slide" onRequestClose={() => setZoomedImage(null)}>
         <View style={styles.modalBackground}>
           <ScrollView maximumZoomScale={4} minimumZoomScale={1} contentContainerStyle={styles.scrollZoomContainer}>
@@ -692,7 +669,6 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
         </View>
       </Modal>
 
-      {/* LEADERBOARD MODAL */}
       <Modal visible={showBoard} transparent animationType="fade" onRequestClose={() => setShowBoard(false)}>
         <View style={styles.lbBackdrop}>
           <View style={styles.lbCard}>
@@ -721,7 +697,6 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
         </View>
       </Modal>
 
-      {/* MAIN CONTENT */}
       <View style={styles.contentContainer}>
         <Text style={styles.welcomeText}>Goedendag, {userName}!</Text>
         {loginTime && <Text style={styles.loginTime}>Ingelogd: {loginTime.toLocaleTimeString()}</Text>}
@@ -737,7 +712,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
               claimedBy={claimedCards.card1?.claimedBy}
               claimedAt={claimedCards.card1?.claimedAt}
               userName={userName}
-              onPress={a => (a === 'claim' ? toggleClaim('card1') : toggleRelease('card1'))}
+              onPress={a => a === 'claim' ? toggleClaim('card1') : toggleRelease('card1')}
               onZoom={setZoomedImage}
               now={now}
             />
@@ -749,7 +724,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
               claimedBy={claimedCards.card2?.claimedBy}
               claimedAt={claimedCards.card2?.claimedAt}
               userName={userName}
-              onPress={a => (a === 'claim' ? toggleClaim('card2') : toggleRelease('card2'))}
+              onPress={a => a === 'claim' ? toggleClaim('card2') : toggleRelease('card2')}
               onZoom={setZoomedImage}
               now={now}
             />
@@ -764,7 +739,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
               claimedBy={claimedCards.card3?.claimedBy}
               claimedAt={claimedCards.card3?.claimedAt}
               userName={userName}
-              onPress={a => (a === 'claim' ? toggleClaim('card3') : toggleRelease('card3'))}
+              onPress={a => a === 'claim' ? toggleClaim('card3') : toggleRelease('card3')}
               onZoom={setZoomedImage}
               now={now}
             />
@@ -776,7 +751,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
               claimedBy={claimedCards.card4?.claimedBy}
               claimedAt={claimedCards.card4?.claimedAt}
               userName={userName}
-              onPress={a => (a === 'claim' ? toggleClaim('card4') : toggleRelease('card4'))}
+              onPress={a => a === 'claim' ? toggleClaim('card4') : toggleRelease('card4')}
               onZoom={setZoomedImage}
               now={now}
             />
@@ -794,58 +769,5 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     </Animated.View>
   );
 };
-
-// === STYLES (volledig intact) ===
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  formContainer: { width: '90%', maxWidth: 400, padding: 25, borderRadius: 15, backgroundColor: '#ffffff', shadowColor: '#000', shadowOffset: { width: 0, height: 15 }, shadowOpacity: 0.7, shadowRadius: 18, elevation: 20, alignItems: 'center' },
-  logo: { width: 120, height: 120, marginBottom: 15, borderRadius: 60, borderWidth: 2, borderColor: '#b22222' },
-  header: { fontSize: 28, fontWeight: 'bold', color: '#333', marginBottom: 10, textAlign: 'center' },
-  label: { fontSize: 16, marginBottom: 10, color: '#555' },
-  input: { width: '100%', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 20, backgroundColor: '#fefefe' },
-  loginButton: { width: '100%', paddingVertical: 15, borderRadius: 8, backgroundColor: '#b22222', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.8, shadowRadius: 10, elevation: 15 },
-  loginButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  faceIDButton: { width: '100%', paddingVertical: 15, borderRadius: 8, backgroundColor: '#555', alignItems: 'center', marginTop: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.8, shadowRadius: 10, elevation: 15 },
-  faceIDButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  errorText: { color: 'yellow', marginTop: 10, fontSize: 14, textAlign: 'center' },
-  retryButton: { marginTop: 20, padding: 10, borderRadius: 5, backgroundColor: '#008000', alignItems: 'center' },
-  retryButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  dashboardContainer: { flex: 1 },
-  contentContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  welcomeText: { fontSize: 20, fontWeight: 'bold', marginBottom: 5, color: '#333' },
-  loginTime: { fontSize: 14, color: '#666', marginBottom: 10 },
-  availableTextCount: { fontSize: 16, color: '#555', marginBottom: 10, fontWeight: 'bold' },
-  cardsContainer: { alignItems: 'center', marginVertical: 20 },
-  cardsRowCentered: { flexDirection: 'row', justifyContent: 'center', width: '100%', marginVertical: 10, gap: 20 },
-  cardContainer: { alignItems: 'center', marginHorizontal: 10, width: '40%' },
-  cardName: { fontSize: 16, marginBottom: 10, color: '#333' },
-  cardImageContainer: { width: 150, height: 150, borderRadius: 10, overflow: 'hidden', borderWidth: 4 },
-  cardImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  claimed: { borderColor: 'red' },
-  available: { borderColor: 'green' },
-  overlayContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255, 0, 0, 0.8)', justifyContent: 'center', alignItems: 'center' },
-  inUseText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  availableText: { position: 'absolute', bottom: 10, left: '50%', transform: [{ translateX: -50 }], color: 'white', backgroundColor: 'rgba(0, 128, 0, 0.8)', paddingHorizontal: 5, borderRadius: 3 },
-  timerText: { fontSize: 12, color: '#444', marginTop: 2 },
-  cardButtons: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 10 },
-  claimButton: { backgroundColor: '#b22222', padding: 10, borderRadius: 5, marginTop: 10, flex: 1, marginRight: 6, alignItems: 'center' },
-  releaseButton: { backgroundColor: '#008000', padding: 10, borderRadius: 5, marginTop: 10, flex: 1, marginLeft: 6, alignItems: 'center' },
-  buttonText: { color: '#fff', fontSize: 14, textAlign: 'center' },
-  logoutButton: { marginTop: 20, padding: 10, borderRadius: 5, backgroundColor: '#b22222', alignItems: 'center' },
-  logoutButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  modalBackground: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' },
-  scrollZoomContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  zoomedImage: { width: Dimensions.get('window').width, height: Dimensions.get('window').height },
-  loadingText: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  lbBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 18 },
-  lbCard: { width: '90%', maxWidth: 420, backgroundColor: '#fff', borderRadius: 14, padding: 16, borderWidth: 2, borderColor: '#b22222' },
-  lbTitle: { fontSize: 20, fontWeight: 'bold', color: '#b22222', marginBottom: 10, textAlign: 'center' },
-  lbRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  lbUser: { fontSize: 16, color: '#222', fontWeight: '600' },
-  lbCount: { fontSize: 16, color: '#b22222', fontWeight: '700' },
-  lbBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
-  lbBtnText: { color: '#fff', fontWeight: '700' },
-  fab: { position: 'absolute', right: 18, bottom: 18, width: 56, height: 56, borderRadius: 28, backgroundColor: '#b22222', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowOffset: { width: 0, height: 6 }, shadowRadius: 8, elevation: 10 },
-});
 
 export default ParkingApp;
