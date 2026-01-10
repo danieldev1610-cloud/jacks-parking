@@ -17,14 +17,6 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 
-// =====================
-// ✅ VERSIONED STORAGE FIX (WEB/APP)
-// =====================
-// Bump this when you change user mappings / labels / data model.
-// This prevents “old user” / “old leaderboard name” sticking in web storage.
-const APP_STORAGE_VERSION = '2026-01-10-1';
-const LS_APP_VERSION_KEY = 'jp_app_storage_version';
-
 // === SUPABASE ===
 const SUPABASE_URL = 'https://itgwuhvchxcskwelelrm.supabase.co';
 const SUPABASE_API_KEY =
@@ -39,7 +31,7 @@ const supabaseHeaders = {
 
 const isWeb = Platform.OS === 'web';
 
-// === NOTIFICATIONS ===
+// === ALERT HELPER ===
 const Alert = {
   alert: (title, message = '', buttons) => {
     if (!isWeb) return RNAlert.alert(title, message, buttons);
@@ -54,7 +46,6 @@ const Alert = {
       if (!ok && cancel?.onPress) cancel.onPress();
       return;
     }
-
     window.alert(`${title}\n\n${message}`);
   },
 };
@@ -83,9 +74,11 @@ async function setupNotifications() {
 async function sendNotification(title, body) {
   try {
     if (isWeb) {
-      if ('Notification' in window && Notification.permission === 'granted')
+      if ('Notification' in window && Notification.permission === 'granted') {
         new Notification(title, { body });
-      else Alert.alert(title, body);
+      } else {
+        Alert.alert(title, body);
+      }
     } else {
       await Notifications.scheduleNotificationAsync({
         content: { title, body },
@@ -146,7 +139,10 @@ const accessCodes = {
 };
 
 // === LOCAL STORAGE KEYS ===
-const LS_KEYS = { USERS: 'jp_known_users', COUNTS: 'jp_claim_counts' };
+const LS_KEYS = {
+  USERS: 'jp_known_users',
+  COUNTS: 'jp_claim_counts',
+};
 
 const loadJSON = async (key, fallback) => {
   try {
@@ -156,6 +152,7 @@ const loadJSON = async (key, fallback) => {
     return fallback;
   }
 };
+
 const saveJSON = async (key, obj) => {
   try {
     await AsyncStorage.setItem(key, JSON.stringify(obj));
@@ -163,7 +160,9 @@ const saveJSON = async (key, obj) => {
 };
 
 const TEN_HOURS_MS = 10 * 60 * 60 * 1000;
+
 const pad2 = n => (n < 10 ? `0${n}` : `${n}`);
+
 const fmtDuration = ms => {
   if (ms < 0) ms = 0;
   const hh = Math.floor(ms / 3600000);
@@ -172,40 +171,8 @@ const fmtDuration = ms => {
   return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}`;
 };
 
-// =====================
-// ✅ VERSIONED STORAGE MIGRATION
-// This fixes: “I changed 1 user name/code mapping but web keeps old one”
-// by clearing only the derived local caches (leaderboard caches) on version bump.
-// =====================
-const ensureStorageVersion = async () => {
-  try {
-    const prev = await AsyncStorage.getItem(LS_APP_VERSION_KEY);
-    if (prev !== APP_STORAGE_VERSION) {
-      // Keep login code (userCode) so users don’t get logged out.
-      // Clear only derived caches that can keep old names.
-      await AsyncStorage.removeItem(LS_KEYS.USERS);
-      await AsyncStorage.removeItem(LS_KEYS.COUNTS);
-
-      await AsyncStorage.setItem(LS_APP_VERSION_KEY, APP_STORAGE_VERSION);
-    }
-  } catch {
-    // ignore
-  }
-};
-
 // === CARD COMPONENT ===
-const Card = ({
-  cardName,
-  cardKey,
-  cardImage,
-  claimedStatus,
-  claimedBy,
-  claimedAt,
-  userName,
-  onPress,
-  onZoom,
-  now,
-}) => {
+const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedAt, userName, onPress, onZoom, now }) => {
   const fadeInValue = useRef(new Animated.Value(0)).current;
   const pulseValue = useRef(new Animated.Value(1)).current;
 
@@ -215,6 +182,7 @@ const Card = ({
       duration: 700,
       useNativeDriver: true,
     }).start();
+
     if (claimedStatus === 'geclaimd') {
       Animated.sequence([
         Animated.timing(pulseValue, { toValue: 1.05, duration: 400, useNativeDriver: true }),
@@ -231,10 +199,7 @@ const Card = ({
     <Animated.View
       style={[
         styles.cardContainer,
-        {
-          opacity: fadeInValue,
-          transform: [{ scale: claimedStatus === 'geclaimd' ? pulseValue : 1 }],
-        },
+        { opacity: fadeInValue, transform: [{ scale: claimedStatus === 'geclaimd' ? pulseValue : 1 }] },
       ]}
     >
       <Text style={styles.cardName}>{cardName}</Text>
@@ -284,13 +249,12 @@ const Card = ({
   );
 };
 
-// === DB HELPERS (teruggezet!) ===
+// === DB HELPERS ===
 const ensureUserExists = async username => {
   try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/users?username=eq.${encodeURIComponent(username)}`,
-      { headers: supabaseHeaders }
-    );
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/users?username=eq.${encodeURIComponent(username)}`, {
+      headers: supabaseHeaders,
+    });
     if (!res.ok) return false;
     const data = await res.json();
     if (data.length === 0) {
@@ -351,13 +315,11 @@ const ParkingApp = () => {
   const [networkStatus, setNetworkStatus] = useState(null);
   const [hasSavedCode, setHasSavedCode] = useState(false);
   const [biometricSupported, setBiometricSupported] = useState(false);
+
   const fadeInUpValue = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const init = async () => {
-      // ✅ critical: ensure we clear outdated local caches when you change a user mapping
-      await ensureStorageVersion();
-
       if (!isWeb) {
         const compatible = await LocalAuthentication.hasHardwareAsync();
         const enrolled = await LocalAuthentication.isEnrolledAsync();
@@ -368,24 +330,24 @@ const ParkingApp = () => {
       if (savedCode && accessCodes[savedCode]) {
         setCode(savedCode);
         setHasSavedCode(true);
-
         const name = accessCodes[savedCode];
         await addKnownUser(name);
         setUserName(name);
-
         await ensureUserExists(name);
         const now = new Date();
         setLoginTime(now);
         await updateUserLastLogin(name, now);
-
         setLoggedIn(true);
       }
 
-      Animated.timing(fadeInUpValue, { toValue: 1, duration: 1200, useNativeDriver: true }).start();
+      Animated.timing(fadeInUpValue, {
+        toValue: 1,
+        duration: 1200,
+        useNativeDriver: true,
+      }).start();
 
       const net = await testNetworkRequest();
       setNetworkStatus(net);
-
       const sup = await testSupabaseConnection();
       setConnectionStatus(sup);
 
@@ -394,6 +356,7 @@ const ParkingApp = () => {
 
       await setupNotifications();
     };
+
     init();
   }, []);
 
@@ -406,12 +369,10 @@ const ParkingApp = () => {
         const name = accessCodes[savedCode];
         await addKnownUser(name);
         setUserName(name);
-
         await ensureUserExists(name);
         const now = new Date();
         setLoginTime(now);
         await updateUserLastLogin(name, now);
-
         setLoggedIn(true);
       }
     }
@@ -422,12 +383,10 @@ const ParkingApp = () => {
       const name = accessCodes[code];
       await addKnownUser(name);
       setUserName(name);
-
       await ensureUserExists(name);
       const now = new Date();
       setLoginTime(now);
       await updateUserLastLogin(name, now);
-
       await AsyncStorage.setItem('userCode', code);
       setHasSavedCode(true);
       setLoggedIn(true);
@@ -470,9 +429,8 @@ const ParkingApp = () => {
             }}
             style={styles.logo}
           />
-          <Text style={styles.header}>Welkom bij Jack&apos;s Parking!</Text>
+          <Text style={styles.header}>Welkom bij Jack's Parking!</Text>
           <Text style={styles.label}>Voer uw toegangscode in:</Text>
-
           <TextInput
             value={code}
             onChangeText={setCode}
@@ -481,8 +439,10 @@ const ParkingApp = () => {
             style={styles.input}
             keyboardType="numeric"
           />
-
-          <TouchableOpacity onPress={handleLogin} style={[styles.loginButton, isWeb && { cursor: 'pointer' }]}>
+          <TouchableOpacity
+            onPress={handleLogin}
+            style={[styles.loginButton, isWeb && { cursor: 'pointer' }]}
+          >
             <Text style={styles.loginButtonText}>Inloggen</Text>
           </TouchableOpacity>
 
@@ -506,7 +466,7 @@ const ParkingApp = () => {
   return <Dashboard onLogout={handleLogout} userName={userName} loginTime={loginTime} />;
 };
 
-// === DASHBOARD MET PERFECTE AUTO-RELEASE ===
+// === DASHBOARD ===
 const Dashboard = ({ onLogout, userName, loginTime }) => {
   const [claimedCards, setClaimedCards] = useState({});
   const [loading, setLoading] = useState(false);
@@ -516,6 +476,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
   const [showBoard, setShowBoard] = useState(false);
   const [boardRows, setBoardRows] = useState([]);
   const [now, setNow] = useState(Date.now());
+
   const fadeInDownValue = useRef(new Animated.Value(0)).current;
   const backgroundAnim = useRef(new Animated.Value(0)).current;
 
@@ -526,12 +487,18 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
 
   const fetchClaims = async () => {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, { headers: supabaseHeaders });
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, {
+        headers: supabaseHeaders,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const obj = {};
       data.forEach(item => {
-        obj[item.card_key] = { status: item.status, claimedBy: item.claimed_by, claimedAt: item.claimed_at };
+        obj[item.card_key] = {
+          status: item.status,
+          claimedBy: item.claimed_by,
+          claimedAt: item.claimed_at,
+        };
       });
       setClaimedCards(obj);
       setFetchError(null);
@@ -541,7 +508,12 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
   };
 
   useEffect(() => {
-    Animated.timing(fadeInDownValue, { toValue: 1, duration: 800, useNativeDriver: true }).start();
+    Animated.timing(fadeInDownValue, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start();
+
     fetchClaims();
     const interval = setInterval(fetchClaims, 2000);
     return () => clearInterval(interval);
@@ -558,6 +530,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
         }
       }
     };
+
     checkAndRelease();
     const interval = setInterval(checkAndRelease, 30000);
     return () => clearInterval(interval);
@@ -565,10 +538,16 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
 
   const animateBackground = color => {
     setBackgroundColor(color);
-    Animated.timing(backgroundAnim, { toValue: 1, duration: 300, useNativeDriver: false }).start(() =>
-      Animated.timing(backgroundAnim, { toValue: 0, duration: 400, useNativeDriver: false }).start(() =>
-        setBackgroundColor('#f0f0f0')
-      )
+    Animated.timing(backgroundAnim, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: false,
+    }).start(() =>
+      Animated.timing(backgroundAnim, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: false,
+      }).start(() => setBackgroundColor('#f0f0f0'))
     );
   };
 
@@ -611,9 +590,12 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
         });
       }
 
-      const cardName = { card1: 'parkeerkaart 1', card2: 'parkeerkaart 2', card3: 'parkeerkaart 3', card4: 'parkeerkaart 4' }[
-        cardKey
-      ];
+      const cardName = {
+        card1: 'parkeerkaart 1',
+        card2: 'parkeerkaart 2',
+        card3: 'parkeerkaart 3',
+        card4: 'parkeerkaart 4',
+      }[cardKey];
 
       if (claimedBy) {
         await incrementClaimCount(claimedBy);
@@ -636,8 +618,10 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
   const toggleClaim = cardKey => {
     const already = Object.values(claimedCards).some(c => c?.claimedBy === userName && c?.status === 'geclaimd');
     if (already) return Alert.alert('Fout', 'Je hebt al een kaart.');
-    if (claimedCards[cardKey]?.status === 'geclaimd')
+
+    if (claimedCards[cardKey]?.status === 'geclaimd') {
       return Alert.alert('Bezet', `In gebruik door ${claimedCards[cardKey].claimedBy}.`);
+    }
 
     Alert.alert('Claimen', 'Weet je het zeker?', [
       { text: 'Nee', style: 'cancel' },
@@ -646,7 +630,10 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
   };
 
   const toggleRelease = cardKey => {
-    if (claimedCards[cardKey]?.claimedBy !== userName) return Alert.alert('Nee', 'Alleen de eigenaar kan vrijgeven.');
+    if (claimedCards[cardKey]?.claimedBy !== userName) {
+      return Alert.alert('Nee', 'Alleen de eigenaar kan vrijgeven.');
+    }
+
     Alert.alert('Vrijgeven', 'Weet je het zeker?', [
       { text: 'Nee', style: 'cancel' },
       { text: 'Ja', onPress: () => saveClaim(cardKey, null) },
@@ -669,22 +656,28 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     setBoardRows(await getLeaderboard());
     setShowBoard(true);
   };
-  const refreshLeaderboard = async () => setBoardRows(await getLeaderboard());
 
-  if (loading) return <View style={styles.container}><Text style={styles.loadingText}>Laden...</Text></View>;
+  const refreshLeaderboard = async () => {
+    setBoardRows(await getLeaderboard());
+  };
 
-  if (fetchError)
-    return (
-      <View style={[styles.container, { backgroundColor: '#b22222' }]}>
-        <Text style={styles.errorText}>{fetchError}</Text>
-        <TouchableOpacity onPress={fetchClaims} style={styles.retryButton}>
-          <Text style={styles.retryButtonText}>Opnieuw</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
-          <Text style={styles.logoutButtonText}>Uitloggen</Text>
-        </TouchableOpacity>
-      </View>
-    );
+  if (loading) return (
+    <View style={styles.container}>
+      <Text style={styles.loadingText}>Laden...</Text>
+    </View>
+  );
+
+  if (fetchError) return (
+    <View style={[styles.container, { backgroundColor: '#b22222' }]}>
+      <Text style={styles.errorText}>{fetchError}</Text>
+      <TouchableOpacity onPress={fetchClaims} style={styles.retryButton}>
+        <Text style={styles.retryButtonText}>Opnieuw</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
+        <Text style={styles.logoutButtonText}>Uitloggen</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <Animated.View style={[styles.dashboardContainer, { backgroundColor: backgroundColorInterpolate }]}>
@@ -710,9 +703,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
               ) : (
                 boardRows.map((row, i) => (
                   <View key={i} style={styles.lbRow}>
-                    <Text style={styles.lbUser}>
-                      {i + 1}. {row.user}
-                    </Text>
+                    <Text style={styles.lbUser}>{i + 1}. {row.user}</Text>
                     <Text style={styles.lbCount}>{row.count}</Text>
                   </View>
                 ))
@@ -763,6 +754,7 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
               now={now}
             />
           </View>
+
           <View style={styles.cardsRowCentered}>
             <Card
               cardName="parkeerkaart 3"
@@ -802,214 +794,6 @@ const Dashboard = ({ onLogout, userName, loginTime }) => {
     </Animated.View>
   );
 };
-
-export default ParkingApp;
-
-// =====================
-// Styles (complete so file runs as-is)
-// =====================
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  formContainer: {
-    width: '92%',
-    maxWidth: 420,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: 16,
-    padding: 18,
-    alignItems: 'center',
-  },
-
-  logo: {
-    width: 84,
-    height: 84,
-    borderRadius: 16,
-    marginBottom: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-
-  header: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 12 },
-  label: { color: '#fff', opacity: 0.9, marginBottom: 10 },
-
-  input: {
-    width: '100%',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    marginBottom: 12,
-  },
-
-  loginButton: {
-    width: '100%',
-    backgroundColor: '#111',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  loginButtonText: { color: '#fff', fontWeight: '800' },
-
-  faceIDButton: {
-    width: '100%',
-    backgroundColor: '#333',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  faceIDButtonText: { color: '#fff', fontWeight: '700' },
-
-  errorText: { color: '#fff', marginTop: 10, fontWeight: '700' },
-
-  dashboardContainer: {
-    flex: 1,
-    paddingTop: 18,
-  },
-
-  contentContainer: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingBottom: 90,
-  },
-
-  welcomeText: { fontSize: 22, fontWeight: '900', marginBottom: 6, color: '#111' },
-  loginTime: { color: '#444', marginBottom: 8, fontWeight: '600' },
-  availableTextCount: { color: '#111', marginBottom: 14, fontWeight: '700' },
-
-  cardsContainer: { gap: 14 },
-  cardsRowCentered: { flexDirection: 'row', gap: 12, justifyContent: 'center', flexWrap: 'wrap' },
-
-  cardContainer: {
-    width: 220,
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-  },
-
-  cardName: { fontWeight: '900', marginBottom: 8, color: '#111', textTransform: 'capitalize' },
-
-  cardImageContainer: {
-    borderRadius: 14,
-    overflow: 'hidden',
-    height: 150,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  cardImage: { width: '100%', height: '100%' },
-
-  claimed: { opacity: 0.95 },
-  available: { opacity: 1 },
-
-  overlayContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-  },
-
-  inUseText: { color: '#fff', fontWeight: '800', textAlign: 'center' },
-  availableText: {
-    position: 'absolute',
-    bottom: 8,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    color: '#fff',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    overflow: 'hidden',
-    fontWeight: '800',
-  },
-
-  timerText: { color: '#333', fontWeight: '700' },
-
-  cardButtons: { flexDirection: 'row', gap: 10, marginTop: 10 },
-  claimButton: {
-    flex: 1,
-    backgroundColor: '#b22222',
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  releaseButton: {
-    flex: 1,
-    backgroundColor: '#222',
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  buttonText: { color: '#fff', fontWeight: '900' },
-
-  logoutButton: {
-    marginTop: 18,
-    backgroundColor: '#000',
-    borderRadius: 14,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  logoutButtonText: { color: '#fff', fontWeight: '900' },
-
-  loadingText: { color: '#111', fontWeight: '800' },
-
-  retryButton: {
-    marginTop: 12,
-    backgroundColor: '#111',
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-  },
-  retryButtonText: { color: '#fff', fontWeight: '900' },
-
-  modalBackground: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center' },
-  scrollZoomContainer: { flexGrow: 1, justifyContent: 'center', alignItems: 'center' },
-  zoomedImage: { width: '95%', height: 520 },
-
-  lbBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center' },
-  lbCard: { width: '92%', maxWidth: 440, backgroundColor: '#fff', borderRadius: 18, padding: 16 },
-  lbTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10, color: '#111' },
-
-  lbRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  lbUser: { fontWeight: '800', color: '#111' },
-  lbCount: { fontWeight: '900', color: '#b22222' },
-
-  lbBtn: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
-  lbBtnText: { color: '#fff', fontWeight: '900' },
-
-  fab: {
-    position: 'absolute',
-    right: 16,
-    bottom: 16,
-    backgroundColor: '#b22222',
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
-  },
-});
-
 
 // === STYLES (volledig intact) ===
 const styles = StyleSheet.create({
