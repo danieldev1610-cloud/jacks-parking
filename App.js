@@ -85,7 +85,7 @@ const testSupabaseConnection = async () => {
   try { const res = await fetch(`${SUPABASE_URL}/rest/v1/claims?select=*`, { headers: supabaseHeaders }); return res.ok; } catch { return false; }
 };
 
-// === TOEGANGSCODES ===
+// === Gebruikers ===
 const accessCodes = {
   '1610': 'Daniel', '2207': 'Taylor', '1806': 'Roland', '2412': 'Lavi', '1111': 'Nunzia',
   '1804': 'Dennis', '15057': 'Debora', '5991': 'Vincent', '8888': 'Jentai', '2404': 'Welan',
