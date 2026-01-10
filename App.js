@@ -30,7 +30,7 @@ const supabaseHeaders = {
 
 const isWeb = Platform.OS === 'web';
 
-// === ALERT WRAPPER ===
+// === NOTIFICATIONS ===
 const Alert = {
   alert: (title, message = '', buttons) => {
     if (!isWeb) return RNAlert.alert(title, message, buttons);
