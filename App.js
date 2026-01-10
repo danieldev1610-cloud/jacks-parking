@@ -88,7 +88,7 @@ const testSupabaseConnection = async () => {
 // === TOEGANGSCODES ===
 const accessCodes = {
   '1610': 'Daniel', '2207': 'Taylor', '1806': 'Roland', '2412': 'Lavi', '1111': 'Nunzia',
-  '1812': 'Charel', '15057': 'Debora', '5991': 'Vincent', '8888': 'Jentai', '2404': 'Welan',
+  '1804': 'Dennis', '15057': 'Debora', '5991': 'Vincent', '8888': 'Jentai', '2404': 'Welan',
   '1951': 'Alysia', '2010': 'Aelita', '1301': 'Daan', '1604': 'Isis', '1505': 'Anouk',
 };
 
