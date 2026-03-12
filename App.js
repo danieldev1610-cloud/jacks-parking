@@ -19,6 +19,7 @@ import {
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
+import { Ionicons } from '@expo/vector-icons';
 
 // ====================== CONFIG ======================
 const SUPABASE_URL = 'https://itgwuhvchxcskwelelrm.supabase.co';
@@ -248,7 +249,7 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
           {isClaimed ? (
             <View style={[s.cardOverlay, { backgroundColor: 'rgba(0,0,0,0.65)' }]}>
               <View style={[s.avatarCircle, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
-                <Text style={{ color: '#fff', fontSize: 18 }}>👤</Text>
+                <Ionicons name="person" size={16} color="#fff" />
               </View>
               <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '500' }}>In gebruik door</Text>
               <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800' }}>{claimedBy}</Text>
@@ -266,7 +267,7 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
       <View style={s.cardContent}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text style={[s.cardTitle, { color: theme.text }]}>{cardName}</Text>
-          <Text style={{ fontSize: 16 }}>🚗</Text>
+          <Ionicons name="car-outline" size={16} color={theme.textSecondary} />
         </View>
 
         {isClaimed && (
@@ -275,7 +276,7 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
               <View style={[s.progressFill, { width: `${progressPct}%`, backgroundColor: isAlmostDone ? theme.warning : theme.primary }]} />
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
-              <Text style={[s.timerLabel, { color: theme.textSecondary }]}>⏱ {fmtDuration(claimedMs)}</Text>
+              <Text style={[s.timerLabel, { color: theme.textSecondary }]}><Ionicons name="time-outline" size={10} color={theme.textSecondary} /> {fmtDuration(claimedMs)}</Text>
               <Text style={[s.timerLabel, { color: isAlmostDone ? theme.warning : theme.textSecondary, fontWeight: '600' }]}>{fmtDuration(remainingMs)} resterend</Text>
             </View>
           </View>
@@ -305,9 +306,9 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
 // ====================== BOTTOM NAV ======================
 const BottomNav = ({ activeTab, onTabChange, theme }) => {
   const tabs = [
-    { id: 'dashboard', label: 'Kaarten', icon: '🎫' },
-    { id: 'history', label: 'Geschiedenis', icon: '📋' },
-    { id: 'profile', label: 'Profiel', icon: '👤' },
+    { id: 'dashboard', label: 'Kaarten', iconName: 'grid-outline', iconNameActive: 'grid' },
+    { id: 'history', label: 'Geschiedenis', iconName: 'time-outline', iconNameActive: 'time' },
+    { id: 'profile', label: 'Profiel', iconName: 'person-outline', iconNameActive: 'person' },
   ];
   return (
     <View style={[s.bottomNav, { backgroundColor: theme.navBg, borderTopColor: theme.border }]}>
@@ -316,7 +317,7 @@ const BottomNav = ({ activeTab, onTabChange, theme }) => {
         return (
           <TouchableOpacity key={tab.id} onPress={() => onTabChange(tab.id)} style={s.navItem}>
             {active && <View style={[s.navIndicator, { backgroundColor: theme.primary }]} />}
-            <Text style={{ fontSize: 18 }}>{tab.icon}</Text>
+            <Ionicons name={active ? tab.iconNameActive : tab.iconName} size={20} color={active ? theme.primary : theme.textSecondary} />
             <Text style={[s.navLabel, { color: active ? theme.primary : theme.textSecondary }]}>{tab.label}</Text>
           </TouchableOpacity>
         );
@@ -403,17 +404,17 @@ const ProfileTab = ({ userName, loginTime, theme }) => {
   }, [userName]);
 
   const statCards = [
-    { icon: '🎫', label: 'Totaal claims', value: `${stats.totalClaims}` },
-    { icon: '⭐', label: 'Favoriete kaart', value: stats.favoriteCard },
-    { icon: '⏱', label: 'Gem. duur', value: stats.avgDurationMs > 0 ? fmtDuration(stats.avgDurationMs) : '-' },
-    { icon: '🏆', label: 'Ranking', value: rank > 0 ? `#${rank}` : '-' },
+    { iconName: 'card-outline', label: 'Totaal claims', value: `${stats.totalClaims}`, color: theme.primary },
+    { iconName: 'star-outline', label: 'Favoriete kaart', value: stats.favoriteCard, color: theme.warning || '#f59e0b' },
+    { iconName: 'time-outline', label: 'Gem. duur', value: stats.avgDurationMs > 0 ? fmtDuration(stats.avgDurationMs) : '-', color: theme.success },
+    { iconName: 'trophy-outline', label: 'Ranking', value: rank > 0 ? `#${rank}` : '-', color: theme.primary },
   ];
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
       <View style={[s.profileHeader, { backgroundColor: theme.card }]}>
         <View style={[s.profileAvatar, { backgroundColor: theme.primary }]}>
-          <Text style={{ fontSize: 28 }}>👤</Text>
+          <Ionicons name="person" size={24} color="#fff" />
         </View>
         <View>
           <Text style={{ fontSize: 20, fontWeight: '800', color: theme.text }}>{userName}</Text>
@@ -424,7 +425,7 @@ const ProfileTab = ({ userName, loginTime, theme }) => {
       <View style={s.statsGrid}>
         {statCards.map(stat => (
           <View key={stat.label} style={[s.statCard, { backgroundColor: theme.card }]}>
-            <Text style={{ fontSize: 22, marginBottom: 8 }}>{stat.icon}</Text>
+            <Ionicons name={stat.iconName} size={20} color={stat.color} style={{ marginBottom: 8 }} />
             <Text style={{ fontSize: 11, color: theme.textSecondary }}>{stat.label}</Text>
             <Text style={{ fontSize: 18, fontWeight: '800', color: theme.text, marginTop: 2 }}>{stat.value}</Text>
           </View>
@@ -432,7 +433,7 @@ const ProfileTab = ({ userName, loginTime, theme }) => {
       </View>
 
       <View style={[s.recentCard, { backgroundColor: theme.card }]}>
-        <Text style={[s.sectionTitle, { color: theme.text, marginBottom: 12 }]}>📈 Recente claims</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}><Ionicons name="trending-up-outline" size={16} color={theme.primary} /><Text style={[s.sectionTitle, { color: theme.text }]}>Recente claims</Text></View>
         {stats.recentClaims.length === 0 ? (
           <Text style={{ textAlign: 'center', color: theme.textSecondary, paddingVertical: 20 }}>Nog geen claims</Text>
         ) : (
@@ -459,8 +460,7 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
   const [loading, setLoading] = useState(false);
   const [zoomedImage, setZoomedImage] = useState(null);
   const [fetchError, setFetchError] = useState(null);
-  const [showBoard, setShowBoard] = useState(false);
-  const [boardRows, setBoardRows] = useState([]);
+  const [zoomedImage, setZoomedImage] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [confirmAction, setConfirmAction] = useState(null);
 
@@ -499,7 +499,6 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
       const { type, cardKey } = confirmAction;
       if (type === 'claim') {
         await saveClaim(cardKey, userName);
-        await incrementClaimCount(userName);
         await addHistoryEntry(userName, cardKey, 'claim');
         await sendNotification(`${cardNames[cardKey]} geclaimd!`, `${userName} heeft ${cardNames[cardKey]} geclaimd.`);
       } else {
@@ -513,11 +512,11 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
   };
 
   const availableCards = 4 - Object.values(claimedCards).filter(c => c?.status === 'geclaimd').length;
-  const openLeaderboard = async () => { setBoardRows(await getLeaderboard()); setShowBoard(true); };
+  
 
   if (fetchError) return (
     <View style={[s.center, { backgroundColor: theme.bg, flex: 1 }]}>
-      <Text style={{ fontSize: 16, color: theme.primary, fontWeight: '700', marginBottom: 8 }}>⚠️ Verbindingsfout</Text>
+      <Text style={{ fontSize: 16, color: theme.primary, fontWeight: '700', marginBottom: 8 }}>! Verbindingsfout</Text>
       <Text style={{ color: theme.textSecondary, marginBottom: 16, fontSize: 13 }}>{fetchError}</Text>
       <TouchableOpacity onPress={fetchClaims} style={[s.btnSmall, { backgroundColor: theme.success }]}><Text style={s.btnText}>Opnieuw</Text></TouchableOpacity>
     </View>
@@ -559,41 +558,15 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
         </View>
       </Modal>
 
-      {/* Leaderboard modal */}
-      <Modal visible={showBoard} transparent animationType="fade" onRequestClose={() => setShowBoard(false)}>
-        <View style={[s.modalBg, { backgroundColor: theme.overlay }]}>
-          <View style={[s.lbCard, { backgroundColor: theme.card }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={{ fontSize: 17, fontWeight: '800', color: theme.text }}>🏆 Leaderboard</Text>
-              <TouchableOpacity onPress={async () => setBoardRows(await getLeaderboard())}><Text style={{ color: theme.primary, fontWeight: '600' }}>↻</Text></TouchableOpacity>
-            </View>
-            <ScrollView style={{ maxHeight: 300 }}>
-              {boardRows.length === 0 ? <Text style={{ textAlign: 'center', color: theme.textSecondary }}>Nog geen data</Text> :
-                boardRows.map((row, i) => (
-                  <View key={i} style={[s.lbRow, { backgroundColor: i === 0 ? theme.primaryLight : i < 3 ? theme.inputBg : 'transparent' }]}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: theme.text }}>
-                      <Text style={{ color: theme.textSecondary }}>{i + 1}. </Text>{row.user}
-                      {row.user === userName && <Text style={{ color: theme.primary, fontSize: 12 }}> (jij)</Text>}
-                    </Text>
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: theme.primary }}>{row.count}</Text>
-                  </View>
-                ))}
-            </ScrollView>
-            <TouchableOpacity onPress={() => setShowBoard(false)} style={[s.confirmBtn, { backgroundColor: theme.inputBg, marginTop: 12 }]}>
-              <Text style={{ fontWeight: '700', color: theme.text, fontSize: 14 }}>Sluiten</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
         {/* Status bar */}
         <View style={{ padding: 12, paddingHorizontal: 16 }}>
           <View style={[s.statusBar, { backgroundColor: theme.card }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <Text style={{ fontSize: 12, color: theme.textSecondary }}>⏰ {loginTime?.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Ionicons name="time-outline" size={13} color={theme.textSecondary} /><Text style={{ fontSize: 12, color: theme.textSecondary }}>{loginTime?.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}</Text></View>
               <View style={{ width: 1, height: 14, backgroundColor: theme.border }} />
-              <Text style={{ fontSize: 12, color: theme.textSecondary }}>🎫 <Text style={{ fontWeight: '800', color: theme.text }}>{availableCards}</Text> / 4 vrij</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Ionicons name="card-outline" size={13} color={theme.textSecondary} /><Text style={{ fontSize: 12, color: theme.textSecondary }}><Text style={{ fontWeight: '800', color: theme.text }}>{availableCards}</Text> / 4 vrij</Text></View>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
               <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: theme.success }} />
@@ -627,10 +600,6 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
         </Text>
       </ScrollView>
 
-      {/* FAB for leaderboard */}
-      <TouchableOpacity onPress={openLeaderboard} style={[s.fab, { backgroundColor: theme.primary }]}>
-        <Text style={{ fontSize: 20 }}>🏆</Text>
-      </TouchableOpacity>
     </View>
   );
 };
@@ -722,7 +691,7 @@ const ParkingApp = () => {
           )}
         </Animated.View>
         <View style={{ alignItems: 'center', marginTop: 30 }}>
-          <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>🚗 JVH Gaming & Entertainment</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>JVH Gaming & Entertainment</Text>
           <Text style={{ color: 'rgba(255,255,255,0.15)', fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase', marginTop: 4, fontWeight: '600' }}>Powered by Nexum Development</Text>
         </View>
       </View>
@@ -807,9 +776,7 @@ const s = StyleSheet.create({
   zoomedImg: { width: SCREEN_W, height: SCREEN_H * 0.8 },
   confirmCard: { width: '85%', maxWidth: 360, borderRadius: 20, padding: 24 },
   confirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 14, alignItems: 'center' },
-  lbCard: { width: '88%', maxWidth: 400, borderRadius: 20, padding: 20 },
   lbRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, marginBottom: 4 },
-  fab: { position: 'absolute', right: 16, bottom: 80, width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', elevation: 8, shadowColor: '#000', shadowOpacity: 0.2, shadowOffset: { width: 0, height: 4 }, shadowRadius: 8 },
   // History
   historyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, marginBottom: 6 },
   historyIcon: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
