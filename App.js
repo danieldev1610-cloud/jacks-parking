@@ -460,7 +460,6 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
   const [loading, setLoading] = useState(false);
   const [zoomedImage, setZoomedImage] = useState(null);
   const [fetchError, setFetchError] = useState(null);
-  const [zoomedImage, setZoomedImage] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [confirmAction, setConfirmAction] = useState(null);
 
