@@ -710,8 +710,8 @@ const ParkingApp = () => {
           </View>
         </View>
         <View style={{ flexDirection: 'row', gap: 4 }}>
-          <TouchableOpacity onPress={toggleTheme} style={s.headerBtn}><Text style={{ fontSize: 18 }}>{isDark ? '☀️' : '🌙'}</Text></TouchableOpacity>
-          <TouchableOpacity onPress={handleLogout} style={s.headerBtn}><Text style={{ fontSize: 16 }}>🚪</Text></TouchableOpacity>
+          <TouchableOpacity onPress={toggleTheme} style={s.headerBtn}><Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={18} color={theme.text} /></TouchableOpacity>
+          <TouchableOpacity onPress={handleLogout} style={s.headerBtn}><Ionicons name="log-out-outline" size={18} color={theme.text} /></TouchableOpacity>
         </View>
       </View>
 
