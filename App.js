@@ -133,7 +133,12 @@ const cardImages = {
 };
 
 const LS_KEYS = { USERS: 'jp_known_users', COUNTS: 'jp_claim_counts', HISTORY: 'jp_claim_history', THEME: 'jp_theme' };
+const ADMIN_USER = 'Daniel';
 const TEN_HOURS_MS = 10 * 60 * 60 * 1000;
+
+// ====================== ADMIN HELPER ======================
+const isAdmin = userName => userName === ADMIN_USER;
+
 const pad2 = n => (n < 10 ? `0${n}` : `${n}`);
 const fmtDuration = ms => {
   if (ms < 0) ms = 0;
@@ -235,7 +240,8 @@ const saveClaim = async (cardKey, claimedBy) => {
 const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedAt, userName, onPress, onZoom, now, theme }) => {
   const isClaimed = claimedStatus === 'geclaimd';
   const isOwner = claimedBy === userName;
-  const isImageClickable = !isClaimed || isOwner;
+  const adminUser = isAdmin(userName);
+  const isImageClickable = adminUser || !isClaimed || isOwner;
   const claimedMs = claimedAt ? now - new Date(claimedAt).getTime() : 0;
   const remainingMs = isClaimed ? Math.max(0, TEN_HOURS_MS - claimedMs) : 0;
   const progressPct = isClaimed ? Math.min(100, (claimedMs / TEN_HOURS_MS) * 100) : 0;
@@ -285,15 +291,15 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
         <View style={s.cardBtns}>
           <TouchableOpacity
             onPress={() => onPress('claim')}
-            disabled={isClaimed}
-            style={[s.btnClaim, { backgroundColor: theme.primary, opacity: isClaimed ? 0.25 : 1 }]}
+            disabled={isClaimed && !adminUser}
+            style={[s.btnClaim, { backgroundColor: theme.primary, opacity: isClaimed && !adminUser ? 0.25 : 1 }]}
           >
-            <Text style={s.btnText}>Claim</Text>
+            <Text style={s.btnText}>{isClaimed && adminUser ? 'Overnemen' : 'Claim'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => onPress('release')}
-            disabled={!isOwner}
-            style={[s.btnRelease, { backgroundColor: theme.success, opacity: !isOwner ? 0.25 : 1 }]}
+            disabled={!isOwner && !adminUser}
+            style={[s.btnRelease, { backgroundColor: theme.success, opacity: !isOwner && !adminUser ? 0.25 : 1 }]}
           >
             <Text style={s.btnText}>Vrijgeven</Text>
           </TouchableOpacity>
@@ -481,12 +487,15 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
   }, [claimedCards]);
 
   const handleAction = (type, cardKey) => {
+    const adminUser = isAdmin(userName);
     if (type === 'claim') {
-      const already = Object.values(claimedCards).some(c => c?.claimedBy === userName && c?.status === 'geclaimd');
-      if (already) return Alert.alert('Fout', 'Je hebt al een kaart.');
-      if (claimedCards[cardKey]?.status === 'geclaimd') return Alert.alert('Bezet', `In gebruik door ${claimedCards[cardKey].claimedBy}.`);
+      if (!adminUser) {
+        const already = Object.values(claimedCards).some(c => c?.claimedBy === userName && c?.status === 'geclaimd');
+        if (already) return Alert.alert('Fout', 'Je hebt al een kaart.');
+        if (claimedCards[cardKey]?.status === 'geclaimd') return Alert.alert('Bezet', `In gebruik door ${claimedCards[cardKey].claimedBy}.`);
+      }
     } else {
-      if (claimedCards[cardKey]?.claimedBy !== userName) return Alert.alert('Nee', 'Alleen de eigenaar kan vrijgeven.');
+      if (!adminUser && claimedCards[cardKey]?.claimedBy !== userName) return Alert.alert('Nee', 'Alleen de eigenaar kan vrijgeven.');
     }
     setConfirmAction({ type, cardKey });
   };
@@ -496,14 +505,25 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
     setLoading(true);
     try {
       const { type, cardKey } = confirmAction;
+      const adminUser = isAdmin(userName);
       if (type === 'claim') {
+        const wasClaimedBy = claimedCards[cardKey]?.claimedBy;
         await saveClaim(cardKey, userName);
         await addHistoryEntry(userName, cardKey, 'claim');
-        await sendNotification(`${cardNames[cardKey]} geclaimd!`, `${userName} heeft ${cardNames[cardKey]} geclaimd.`);
+        if (adminUser && wasClaimedBy && wasClaimedBy !== userName) {
+          await sendNotification(`⚠️ Admin Override: ${cardNames[cardKey]}`, `Admin ${userName} heeft ${cardNames[cardKey]} overgenomen van ${wasClaimedBy}.`);
+        } else {
+          await sendNotification(`${cardNames[cardKey]} geclaimd!`, `${userName} heeft ${cardNames[cardKey]} geclaimd.`);
+        }
       } else {
+        const wasClaimedBy = claimedCards[cardKey]?.claimedBy;
         await saveClaim(cardKey, null);
         await addHistoryEntry(userName, cardKey, 'release');
-        await sendNotification(`${cardNames[cardKey]} beschikbaar!`, `${cardNames[cardKey]} is nu weer vrij.`);
+        if (adminUser && wasClaimedBy && wasClaimedBy !== userName) {
+          await sendNotification(`⚠️ Admin Release: ${cardNames[cardKey]}`, `Admin ${userName} heeft ${cardNames[cardKey]} vrijgegeven (was van ${wasClaimedBy}).`);
+        } else {
+          await sendNotification(`${cardNames[cardKey]} beschikbaar!`, `${cardNames[cardKey]} is nu weer vrij.`);
+        }
       }
       await fetchClaims();
     } catch (err) { Alert.alert('Fout', `Kon niet opslaan: ${err.message}`); }
@@ -511,7 +531,6 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
   };
 
   const availableCards = 4 - Object.values(claimedCards).filter(c => c?.status === 'geclaimd').length;
-  
 
   if (fetchError) return (
     <View style={[s.center, { backgroundColor: theme.bg, flex: 1 }]}>
@@ -557,7 +576,6 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
         </View>
       </Modal>
 
-
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
         {/* Status bar */}
         <View style={{ padding: 12, paddingHorizontal: 16 }}>
@@ -598,7 +616,6 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
           Powered by Nexum Development
         </Text>
       </ScrollView>
-
     </View>
   );
 };
@@ -706,7 +723,10 @@ const ParkingApp = () => {
           <Image source={{ uri: 'https://media.glassdoor.com/sqll/1075020/jvh-gaming-en-entertainment-squarelogo-1533909494473.png' }} style={s.headerLogo} />
           <View>
             <Text style={{ fontSize: 13, fontWeight: '800', color: theme.text }}>Jack's Parking</Text>
-            <Text style={{ fontSize: 11, color: theme.textSecondary }}>{userName}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={{ fontSize: 11, color: theme.textSecondary }}>{userName}</Text>
+              {isAdmin(userName) && <Text style={{ fontSize: 10, fontWeight: '800', color: theme.primary, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: theme.primaryLight, borderRadius: 4 }}>👑 ADMIN</Text>}
+            </View>
           </View>
         </View>
         <View style={{ flexDirection: 'row', gap: 4 }}>
