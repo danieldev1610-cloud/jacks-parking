@@ -121,7 +121,7 @@ const accessCodes = {
   '1610': 'Daniel', '2207': 'Taylor', '1806': 'Roland', '2412': 'Lavi',
   '1111': 'Nunzia', '1804': 'Dennis', '15057': 'Debora', '5991': 'Vincent',
   '8888': 'Jentai', '2404': 'Welan', '1951': 'Alysia', '2010': 'Aelita',
-  '1301': 'Daan', '1604': 'Isis', '1505': 'Anouk',
+  '1209': 'Faisca', '1604': 'Isis', '1505': 'Anouk',
 };
 
 const cardNames = { card1: 'Parkeerkaart 1', card2: 'Parkeerkaart 2', card3: 'Parkeerkaart 3', card4: 'Parkeerkaart 4' };
