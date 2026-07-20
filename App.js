@@ -133,7 +133,7 @@ if (!isWeb) {
 const accessCodes = {
   '1610': 'Daniel', '2207': 'Taylor', '1806': 'Roland', '2412': 'Lavi',
   '1111': 'Nunzia', '1804': 'Dennis', '15057': 'Debora', '5991': 'Vincent',
-  '8888': 'Jentai', '2404': 'Marcel', '1304': 'Alysia', '2010': 'Aelita',
+  '8888': 'Jentai', '2404': 'Alysia', '1304': 'Marcel', '2010': 'Aelita',
   '1209': 'Faisca', '1604': 'Isis', '0909': 'Kirby', '1505': 'Anouk',
 };
 
@@ -147,7 +147,7 @@ const cardImages = {
 
 const LS_KEYS = { USERS: 'jp_known_users', COUNTS: 'jp_claim_counts', HISTORY: 'jp_claim_history', THEME: 'jp_theme' };
 const ADMIN_USER = 'Daniel';
-const TEN_HOURS_MS = 10 * 60 * 60 * 1000;
+const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
 
 const isAdmin = userName => userName === ADMIN_USER;
 
@@ -164,37 +164,49 @@ const saveJSON = async (key, obj) => {
   try { await AsyncStorage.setItem(key, JSON.stringify(obj)); } catch {}
 };
 
-const addKnownUser = async name => {
-  const users = await loadJSON(LS_KEYS.USERS, []);
-  if (!users.includes(name)) { users.push(name); await saveJSON(LS_KEYS.USERS, users); }
-};
-const incrementClaimCount = async name => {
-  const counts = await loadJSON(LS_KEYS.COUNTS, {});
-  counts[name] = (counts[name] || 0) + 1;
-  await saveJSON(LS_KEYS.COUNTS, counts);
-  return counts[name];
-};
-const getLeaderboard = async () => {
-  const users = await loadJSON(LS_KEYS.USERS, []);
-  const counts = await loadJSON(LS_KEYS.COUNTS, {});
-  const rows = users.map(u => ({ user: u, count: counts[u] || 0 }));
-  rows.sort((a, b) => b.count - a.count || a.user.localeCompare(b.user));
-  return rows;
-};
+// History nu in Supabase (tabel: public.history) zodat leaderboard/history cross-device werkt.
+const addKnownUser = async () => {};
 
 const addHistoryEntry = async (user, cardKey, action) => {
-  const history = await loadJSON(LS_KEYS.HISTORY, []);
-  history.unshift({
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    user, cardKey, cardName: cardNames[cardKey] || cardKey, action,
-    timestamp: new Date().toISOString(),
-  });
-  if (history.length > 200) history.length = 200;
-  await saveJSON(LS_KEYS.HISTORY, history);
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/history`, {
+      method: 'POST', headers: supabaseHeaders,
+      body: JSON.stringify({ user_name: user, card_key: cardKey, action }),
+    });
+  } catch {}
 };
-const getHistory = async () => loadJSON(LS_KEYS.HISTORY, []);
+
+const fetchHistoryRows = async (limit = 500) => {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/history?select=*&order=created_at.desc&limit=${limit}`, { headers: supabaseHeaders });
+    if (!res.ok) return [];
+    const rows = await res.json();
+    return rows.map(r => ({
+      id: r.id,
+      user: r.user_name,
+      cardKey: r.card_key,
+      cardName: cardNames[r.card_key] || r.card_key,
+      action: r.action,
+      timestamp: r.created_at,
+    }));
+  } catch { return []; }
+};
+
+const getHistory = async () => fetchHistoryRows(200);
+
+const getLeaderboard = async () => {
+  const rows = await fetchHistoryRows(1000);
+  const counts = {};
+  rows.forEach(h => { if (h.action === 'claim') counts[h.user] = (counts[h.user] || 0) + 1; });
+  // include known access-code users met 0 claims zodat lijst niet leeg is
+  Object.values(accessCodes).forEach(u => { if (!(u in counts)) counts[u] = counts[u] || 0; });
+  const out = Object.entries(counts).map(([user, count]) => ({ user, count }));
+  out.sort((a, b) => b.count - a.count || a.user.localeCompare(b.user));
+  return out;
+};
+
 const getUserStats = async userName => {
-  const history = await loadJSON(LS_KEYS.HISTORY, []);
+  const history = await fetchHistoryRows(1000);
   const userEntries = history.filter(h => h.user === userName);
   const claims = userEntries.filter(h => h.action === 'claim');
   const totalClaims = claims.length;
@@ -259,11 +271,11 @@ const GradientButton = ({ onPress, disabled, style, children }) => (
   </TouchableOpacity>
 );
 
-const Blobs = ({ dark }) => (
+const Blobs = ({ dark, quiet }) => (
   <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-    <View style={[s.blob, { top: -80, left: -60, backgroundColor: NEXUM.orange, opacity: dark ? 0.35 : 0.45 }]} />
-    <View style={[s.blob, { top: 180, right: -100, backgroundColor: NEXUM.pink, opacity: dark ? 0.30 : 0.40, width: 320, height: 320 }]} />
-    <View style={[s.blob, { bottom: -60, left: 40, backgroundColor: NEXUM.purple, opacity: dark ? 0.30 : 0.38 }]} />
+    <View style={[s.blob, { top: -80, left: -60, backgroundColor: NEXUM.orange, opacity: (dark ? 0.35 : 0.45) * (quiet ? 0.35 : 1) }]} />
+    <View style={[s.blob, { top: 180, right: -100, backgroundColor: NEXUM.pink, opacity: (dark ? 0.30 : 0.40) * (quiet ? 0.35 : 1), width: 320, height: 320 }]} />
+    <View style={[s.blob, { bottom: -60, left: 40, backgroundColor: NEXUM.purple, opacity: (dark ? 0.30 : 0.38) * (quiet ? 0.35 : 1) }]} />
   </View>
 );
 
@@ -274,8 +286,8 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
   const adminUser = isAdmin(userName);
   const isImageClickable = adminUser || !isClaimed || isOwner;
   const claimedMs = claimedAt ? now - new Date(claimedAt).getTime() : 0;
-  const remainingMs = isClaimed ? Math.max(0, TEN_HOURS_MS - claimedMs) : 0;
-  const progressPct = isClaimed ? Math.min(100, (claimedMs / TEN_HOURS_MS) * 100) : 0;
+  const remainingMs = isClaimed ? Math.max(0, TWELVE_HOURS_MS - claimedMs) : 0;
+  const progressPct = isClaimed ? Math.min(100, (claimedMs / TWELVE_HOURS_MS) * 100) : 0;
 
   return (
     <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -343,7 +355,8 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
 const BottomNav = ({ activeTab, onTabChange, theme }) => {
   const tabs = [
     { id: 'dashboard', label: 'Kaarten', iconName: 'grid-outline', iconNameActive: 'grid' },
-    { id: 'history', label: 'Geschiedenis', iconName: 'time-outline', iconNameActive: 'time' },
+    { id: 'history', label: 'Historie', iconName: 'time-outline', iconNameActive: 'time' },
+    { id: 'leaderboard', label: 'Ranking', iconName: 'trophy-outline', iconNameActive: 'trophy' },
     { id: 'profile', label: 'Profiel', iconName: 'person-outline', iconNameActive: 'person' },
   ];
   return (
@@ -517,7 +530,7 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
   useEffect(() => {
     const check = async () => {
       for (const [k, v] of Object.entries(claimedCards)) {
-        if (v?.status === 'geclaimd' && v?.claimedAt && Date.now() >= new Date(v.claimedAt).getTime() + TEN_HOURS_MS) await saveClaim(k, null);
+        if (v?.status === 'geclaimd' && v?.claimedAt && Date.now() >= new Date(v.claimedAt).getTime() + TWELVE_HOURS_MS) await saveClaim(k, null);
       }
     };
     check(); const t = setInterval(check, 30000); return () => clearInterval(t);
@@ -659,6 +672,62 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
   );
 };
 
+// ====================== LEADERBOARD TAB ======================
+const LeaderboardTab = ({ userName, theme }) => {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setRows(await getLeaderboard());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, [load]);
+
+  const medal = i => (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`);
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Text style={[s.sectionTitle, { color: theme.text }]}>Leaderboard</Text>
+        <TouchableOpacity onPress={load} style={[s.headerBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Ionicons name="refresh-outline" size={16} color={theme.text} />
+        </TouchableOpacity>
+      </View>
+
+      {loading ? (
+        <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 40 }}>Laden...</Text>
+      ) : rows.length === 0 ? (
+        <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 40 }}>Nog geen claims</Text>
+      ) : (
+        rows.map((r, i) => {
+          const isMe = r.user === userName;
+          return (
+            <View key={r.user} style={[s.historyRow, {
+              backgroundColor: isMe ? 'rgba(232,67,147,0.10)' : theme.card,
+              borderColor: isMe ? NEXUM.pink : theme.border,
+            }]}>
+              <View style={{ width: 40, alignItems: 'center' }}>
+                <Text style={{ fontSize: i < 3 ? 22 : 14, fontWeight: '900', color: theme.text }}>{medal(i)}</Text>
+              </View>
+              <View style={{ flex: 1, marginLeft: 4 }}>
+                <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>{r.user}{isMe ? '  (jij)' : ''}</Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>{r.count} claim{r.count === 1 ? '' : 's'}</Text>
+              </View>
+              <View style={s.historyBadge}>
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange, borderRadius: 8 }]} />
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.85, borderRadius: 8 }]} />
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.55, borderRadius: 8 }]} />
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '900' }}>{r.count}</Text>
+              </View>
+            </View>
+          );
+        })
+      )}
+    </ScrollView>
+  );
+};
+
 // ====================== MAIN APP ======================
 const ParkingApp = () => {
   const systemScheme = useColorScheme();
@@ -677,7 +746,7 @@ const ParkingApp = () => {
   useEffect(() => {
     (async () => {
       const savedTheme = await AsyncStorage.getItem(LS_KEYS.THEME);
-      setIsDark(savedTheme ? savedTheme === 'dark' : systemScheme === 'dark');
+      setIsDark(savedTheme === 'dark'); // default light, respect saved keuze
 
       if (!isWeb) {
         const compatible = await LocalAuthentication.hasHardwareAsync();
@@ -777,7 +846,7 @@ const ParkingApp = () => {
   return (
     <View style={[s.appContainer, { backgroundColor: theme.bg }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <Blobs dark={isDark} />
+      <Blobs dark={isDark} quiet />
 
       {/* Header */}
       <View style={[s.header, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
@@ -805,14 +874,16 @@ const ParkingApp = () => {
           <TouchableOpacity onPress={toggleTheme} style={[s.headerBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={16} color={theme.text} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleLogout} style={[s.headerBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Ionicons name="log-out-outline" size={16} color={theme.text} />
+          <TouchableOpacity onPress={handleLogout} style={[s.logoutBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Ionicons name="log-out-outline" size={14} color={theme.text} />
+            <Text style={{ color: theme.text, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>UIT</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {activeTab === 'dashboard' && <DashboardTab userName={userName} loginTime={loginTime} onLogout={handleLogout} theme={theme} />}
       {activeTab === 'history' && <HistoryTab userName={userName} theme={theme} />}
+      {activeTab === 'leaderboard' && <LeaderboardTab userName={userName} theme={theme} />}
       {activeTab === 'profile' && <ProfileTab userName={userName} loginTime={loginTime} theme={theme} />}
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} theme={theme} />
@@ -829,7 +900,7 @@ const s = StyleSheet.create({
   blob: { position: 'absolute', width: 280, height: 280, borderRadius: 999 },
 
   // Login
-  loginContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  loginContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, paddingTop: Platform.OS === 'web' ? 60 : 20 },
   loginCard: { width: '100%', maxWidth: 400, borderRadius: 28, padding: 32, alignItems: 'center', borderWidth: 1,
     shadowColor: NEXUM.pink, shadowOpacity: 0.15, shadowRadius: 40, shadowOffset: { width: 0, height: 20 }, elevation: 8 },
   logoWrap: { width: 72, height: 72, borderRadius: 20, marginBottom: 20, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
@@ -838,9 +909,10 @@ const s = StyleSheet.create({
   faceIdBtn: { width: '100%', paddingVertical: 14, borderRadius: 16, alignItems: 'center', marginTop: 10, borderWidth: 1, flexDirection: 'row', justifyContent: 'center' },
 
   // Header
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 54 : 16, paddingBottom: 12, borderBottomWidth: 0.5 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 54 : Platform.OS === 'web' ? 44 : 36, paddingBottom: 12, borderBottomWidth: 0.5 },
   headerLogo: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
   headerBtn: { padding: 8, borderRadius: 12, borderWidth: 1 },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
   adminBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
 
   // Bottom nav
