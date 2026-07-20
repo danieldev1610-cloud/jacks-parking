@@ -120,7 +120,7 @@ if (!isWeb) {
 const accessCodes = {
   '1610': 'Daniel', '2207': 'Taylor', '1806': 'Roland', '2412': 'Lavi',
   '1111': 'Nunzia', '1804': 'Dennis', '15057': 'Debora', '5991': 'Vincent',
-  '8888': 'Jentai', '2404': 'Welan', '1951': 'Alysia', '2010': 'Aelita',
+  '8888': 'Jentai', '2404': 'Marcel', '1304': 'Alysia', '2010': 'Aelita',
   '1209': 'Faisca', '1604': 'Isis', '0909': 'Kirby', '1505': 'Anouk',
 };
 
