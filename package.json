@@ -14,16 +14,16 @@
     "expo": "~53.0.22",
     "@expo/metro-runtime": "~5.0.4",
     "expo-status-bar": "~2.2.3",
-
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.6",
     "react-native-web": "^0.21.1",
-
     "@expo/vector-icons": "^14.1.0",
     "@react-native-async-storage/async-storage": "2.1.2",
+    "expo-asset": "~11.1.5",
     "expo-av": "~15.1.4",
     "expo-constants": "~17.1.6",
+    "expo-font": "~13.3.1",
     "expo-local-authentication": "~16.0.4",
     "expo-notifications": "~0.31.2",
     "react-native-animatable": "*",
