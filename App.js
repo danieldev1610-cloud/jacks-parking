@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -35,41 +35,54 @@ const supabaseHeaders = {
 const isWeb = Platform.OS === 'web';
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-// ====================== THEME ======================
+// ====================== NEXUM THEME ======================
+// Kleuren geinspireerd op nexumdev.nl: warm cream, oranje -> roze -> paars gradient, ink zwart.
+const NEXUM = {
+  orange: '#ff6b35',
+  pink: '#e84393',
+  purple: '#a855f7',
+  ink: '#0d0d0d',
+  cream: '#faf8f5',
+};
+
 const lightTheme = {
-  bg: '#f5f6f8',
+  bg: NEXUM.cream,
   card: '#ffffff',
-  text: '#1a1d23',
+  text: NEXUM.ink,
   textSecondary: '#6b7280',
-  primary: '#b22222',
-  primaryLight: 'rgba(178,34,34,0.1)',
+  primary: NEXUM.pink,
+  primaryLight: 'rgba(232,67,147,0.10)',
+  gradient: [NEXUM.orange, NEXUM.pink, NEXUM.purple],
   success: '#22915a',
-  successLight: 'rgba(34,145,90,0.1)',
-  warning: '#e89a1c',
-  border: '#e5e7eb',
-  inputBg: '#f0f1f3',
-  overlay: 'rgba(0,0,0,0.5)',
-  headerBg: 'rgba(255,255,255,0.85)',
-  navBg: 'rgba(255,255,255,0.92)',
-  loginGradient: ['#2a0a0a', '#8b1a1a', '#2a0a0a'],
+  successLight: 'rgba(34,145,90,0.10)',
+  warning: NEXUM.orange,
+  border: '#ecebe6',
+  inputBg: '#ffffff',
+  overlay: 'rgba(13,13,13,0.55)',
+  headerBg: 'rgba(250,248,245,0.88)',
+  navBg: 'rgba(255,255,255,0.94)',
+  loginGradient: [NEXUM.orange, NEXUM.pink, NEXUM.purple],
+  isDark: false,
 };
 
 const darkTheme = {
-  bg: '#0d1017',
-  card: '#161b22',
-  text: '#e6edf3',
-  textSecondary: '#7d8590',
-  primary: '#d63031',
-  primaryLight: 'rgba(214,48,49,0.15)',
+  bg: '#0d0d12',
+  card: '#161620',
+  text: '#f5f3ee',
+  textSecondary: '#8b8b96',
+  primary: NEXUM.pink,
+  primaryLight: 'rgba(232,67,147,0.18)',
+  gradient: [NEXUM.orange, NEXUM.pink, NEXUM.purple],
   success: '#2ea96a',
   successLight: 'rgba(46,169,106,0.15)',
-  warning: '#f0a830',
-  border: '#21262d',
-  inputBg: '#1c2128',
+  warning: NEXUM.orange,
+  border: '#23232e',
+  inputBg: '#1c1c26',
   overlay: 'rgba(0,0,0,0.7)',
-  headerBg: 'rgba(22,27,34,0.88)',
-  navBg: 'rgba(22,27,34,0.92)',
-  loginGradient: ['#0d0505', '#5c1111', '#0d0505'],
+  headerBg: 'rgba(22,22,32,0.88)',
+  navBg: 'rgba(22,22,32,0.94)',
+  loginGradient: ['#0d0d12', '#2a0a1e', '#0d0d12'],
+  isDark: true,
 };
 
 // ====================== HELPERS ======================
@@ -136,7 +149,6 @@ const LS_KEYS = { USERS: 'jp_known_users', COUNTS: 'jp_claim_counts', HISTORY: '
 const ADMIN_USER = 'Daniel';
 const TEN_HOURS_MS = 10 * 60 * 60 * 1000;
 
-// ====================== ADMIN HELPER ======================
 const isAdmin = userName => userName === ADMIN_USER;
 
 const pad2 = n => (n < 10 ? `0${n}` : `${n}`);
@@ -170,7 +182,6 @@ const getLeaderboard = async () => {
   return rows;
 };
 
-// History helpers
 const addHistoryEntry = async (user, cardKey, action) => {
   const history = await loadJSON(LS_KEYS.HISTORY, []);
   history.unshift({
@@ -236,6 +247,26 @@ const saveClaim = async (cardKey, claimedBy) => {
   }
 };
 
+// ====================== VISUAL HELPERS ======================
+// Simuleer gradient met gestapelde View lagen (geen extra dependency).
+const GradientButton = ({ onPress, disabled, style, children }) => (
+  <TouchableOpacity onPress={onPress} disabled={disabled} activeOpacity={0.85}
+    style={[s.gradBtn, disabled && { opacity: 0.35 }, style]}>
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange, borderRadius: 999 }]} />
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.85, borderRadius: 999 }]} />
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.55, borderRadius: 999 }]} />
+    {children}
+  </TouchableOpacity>
+);
+
+const Blobs = ({ dark }) => (
+  <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    <View style={[s.blob, { top: -80, left: -60, backgroundColor: NEXUM.orange, opacity: dark ? 0.35 : 0.45 }]} />
+    <View style={[s.blob, { top: 180, right: -100, backgroundColor: NEXUM.pink, opacity: dark ? 0.30 : 0.40, width: 320, height: 320 }]} />
+    <View style={[s.blob, { bottom: -60, left: 40, backgroundColor: NEXUM.purple, opacity: dark ? 0.30 : 0.38 }]} />
+  </View>
+);
+
 // ====================== CARD COMPONENT ======================
 const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedAt, userName, onPress, onZoom, now, theme }) => {
   const isClaimed = claimedStatus === 'geclaimd';
@@ -245,61 +276,60 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
   const claimedMs = claimedAt ? now - new Date(claimedAt).getTime() : 0;
   const remainingMs = isClaimed ? Math.max(0, TEN_HOURS_MS - claimedMs) : 0;
   const progressPct = isClaimed ? Math.min(100, (claimedMs / TEN_HOURS_MS) * 100) : 0;
-  const isAlmostDone = remainingMs > 0 && remainingMs < 3600000;
 
   return (
-    <View style={[s.card, { backgroundColor: theme.card, borderColor: isClaimed ? theme.primary + '60' : theme.success + '60' }]}>
-      <TouchableOpacity onPress={isImageClickable ? () => onZoom(cardImage) : null} disabled={!isImageClickable} activeOpacity={0.9}>
+    <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+      <TouchableOpacity onPress={() => isImageClickable ? onZoom(cardImage) : null} disabled={!isImageClickable} activeOpacity={0.9}>
         <View style={s.cardImgWrap}>
           <Image source={{ uri: cardImage }} style={s.cardImg} />
-          {isClaimed ? (
-            <View style={[s.cardOverlay, { backgroundColor: 'rgba(0,0,0,0.65)' }]}>
-              <View style={[s.avatarCircle, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
-                <Ionicons name="person" size={16} color="#fff" />
-              </View>
-              <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '500' }}>In gebruik door</Text>
-              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800' }}>{claimedBy}</Text>
-            </View>
-          ) : (
-            <View style={s.cardOverlayGradient} />
-          )}
-          <View style={[s.badge, { backgroundColor: isClaimed ? theme.primary + 'cc' : theme.success + 'cc' }]}>
-            <View style={[s.badgeDot, { backgroundColor: '#fff' }]} />
-            <Text style={s.badgeText}>{isClaimed ? 'Bezet' : 'Vrij'}</Text>
+          <View style={s.cardOverlayGradient} />
+          <View style={[s.badge, { backgroundColor: isClaimed ? NEXUM.ink : 'rgba(255,255,255,0.95)' }]}>
+            <View style={[s.badgeDot, { backgroundColor: isClaimed ? NEXUM.orange : '#22c55e' }]} />
+            <Text style={[s.badgeText, { color: isClaimed ? '#fff' : NEXUM.ink }]}>{isClaimed ? 'BEZET' : 'VRIJ'}</Text>
           </View>
+          {isClaimed && (
+            <View style={s.cardOwner}>
+              <Text style={s.cardOwnerLabel}>In gebruik door</Text>
+              <Text style={s.cardOwnerName}>{claimedBy}</Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
 
       <View style={s.cardContent}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={[s.cardTitle, { color: theme.text }]}>{cardName}</Text>
-          <Ionicons name="car-outline" size={16} color={theme.textSecondary} />
-        </View>
+        <Text style={[s.cardTitle, { color: theme.text }]}>{cardName}</Text>
 
-        {isClaimed && (
-          <View style={{ marginTop: 8 }}>
-            <View style={[s.progressBg, { backgroundColor: theme.inputBg }]}>
-              <View style={[s.progressFill, { width: `${progressPct}%`, backgroundColor: isAlmostDone ? theme.warning : theme.primary }]} />
+        {isClaimed ? (
+          <>
+            <View style={[s.progressBg, { backgroundColor: theme.inputBg, marginTop: 8 }]}>
+              <View style={[s.progressFill, { width: `${progressPct}%` }]}>
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange }]} />
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.75 }]} />
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.5 }]} />
+              </View>
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
-              <Text style={[s.timerLabel, { color: theme.textSecondary }]}><Ionicons name="time-outline" size={10} color={theme.textSecondary} /> {fmtDuration(claimedMs)}</Text>
-              <Text style={[s.timerLabel, { color: isAlmostDone ? theme.warning : theme.textSecondary, fontWeight: '600' }]}>{fmtDuration(remainingMs)} resterend</Text>
+              <Text style={[s.timerLabel, { color: theme.textSecondary }]}>{fmtDuration(claimedMs)}</Text>
+              <Text style={[s.timerLabel, { color: theme.textSecondary }]}>{fmtDuration(remainingMs)} over</Text>
             </View>
-          </View>
+          </>
+        ) : (
+          <Text style={[s.timerLabel, { color: theme.textSecondary, marginTop: 8 }]}>Beschikbaar om te claimen</Text>
         )}
 
         <View style={s.cardBtns}>
-          <TouchableOpacity
+          <GradientButton
             onPress={() => onPress('claim')}
             disabled={isClaimed && !adminUser}
-            style={[s.btnClaim, { backgroundColor: theme.primary, opacity: isClaimed && !adminUser ? 0.25 : 1 }]}
+            style={{ flex: 1 }}
           >
             <Text style={s.btnText}>{isClaimed && adminUser ? 'Overnemen' : 'Claim'}</Text>
-          </TouchableOpacity>
+          </GradientButton>
           <TouchableOpacity
             onPress={() => onPress('release')}
             disabled={!isOwner && !adminUser}
-            style={[s.btnRelease, { backgroundColor: theme.success, opacity: !isOwner && !adminUser ? 0.25 : 1 }]}
+            activeOpacity={0.85}
+            style={[s.btnRelease, { backgroundColor: NEXUM.ink, opacity: !isOwner && !adminUser ? 0.25 : 1 }]}
           >
             <Text style={s.btnText}>Vrijgeven</Text>
           </TouchableOpacity>
@@ -321,10 +351,16 @@ const BottomNav = ({ activeTab, onTabChange, theme }) => {
       {tabs.map(tab => {
         const active = activeTab === tab.id;
         return (
-          <TouchableOpacity key={tab.id} onPress={() => onTabChange(tab.id)} style={s.navItem}>
-            {active && <View style={[s.navIndicator, { backgroundColor: theme.primary }]} />}
-            <Ionicons name={active ? tab.iconNameActive : tab.iconName} size={20} color={active ? theme.primary : theme.textSecondary} />
-            <Text style={[s.navLabel, { color: active ? theme.primary : theme.textSecondary }]}>{tab.label}</Text>
+          <TouchableOpacity key={tab.id} onPress={() => onTabChange(tab.id)} style={s.navItem} activeOpacity={0.7}>
+            {active && (
+              <View style={s.navIndicatorWrap}>
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange }]} />
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.85 }]} />
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.55 }]} />
+              </View>
+            )}
+            <Ionicons name={active ? tab.iconNameActive : tab.iconName} size={22} color={active ? NEXUM.pink : theme.textSecondary} />
+            <Text style={[s.navLabel, { color: active ? NEXUM.pink : theme.textSecondary }]}>{tab.label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -356,37 +392,33 @@ const HistoryTab = ({ userName, theme }) => {
   };
 
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Text style={[s.sectionTitle, { color: theme.text }]}>📋 Geschiedenis</Text>
-        <View style={[s.filterWrap, { backgroundColor: theme.inputBg }]}>
+        <Text style={[s.sectionTitle, { color: theme.text }]}>Geschiedenis</Text>
+        <View style={[s.filterWrap, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
           {['all', 'mine'].map(f => (
-            <TouchableOpacity key={f} onPress={() => setFilter(f)} style={[s.filterBtn, filter === f && { backgroundColor: theme.card }]}>
-              <Text style={[s.filterText, { color: filter === f ? theme.text : theme.textSecondary }]}>{f === 'all' ? 'Alles' : 'Mijn'}</Text>
+            <TouchableOpacity key={f} onPress={() => setFilter(f)} style={[s.filterBtn, filter === f && { backgroundColor: NEXUM.ink }]}>
+              <Text style={[s.filterText, { color: filter === f ? '#fff' : theme.textSecondary }]}>{f === 'all' ? 'Alles' : 'Mijn'}</Text>
             </TouchableOpacity>
           ))}
         </View>
       </View>
       {filtered.length === 0 ? (
-        <Text style={{ textAlign: 'center', color: theme.textSecondary, marginTop: 60 }}>Nog geen geschiedenis</Text>
+        <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 40 }}>Nog geen geschiedenis</Text>
       ) : (
         filtered.map(entry => (
-          <View key={entry.id} style={[s.historyRow, { backgroundColor: theme.card }]}>
-            <View style={[s.historyIcon, { backgroundColor: entry.action === 'claim' ? theme.primaryLight : theme.successLight }]}>
-              <Text style={{ fontSize: 14 }}>{entry.action === 'claim' ? '🔴' : '🟢'}</Text>
+          <View key={entry.id} style={[s.historyRow, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <View style={[s.historyIcon, { backgroundColor: entry.action === 'claim' ? 'rgba(232,67,147,0.12)' : 'rgba(34,145,90,0.12)' }]}>
+              <Ionicons name={entry.action === 'claim' ? 'lock-closed' : 'lock-open'} size={16} color={entry.action === 'claim' ? NEXUM.pink : '#22915a'} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13, color: theme.text }} numberOfLines={1}>
-                <Text style={{ fontWeight: '700' }}>{entry.user}</Text> heeft{' '}
-                <Text style={{ fontWeight: '700' }}>{entry.cardName}</Text>{' '}
-                {entry.action === 'claim' ? 'geclaimd' : 'vrijgegeven'}
+              <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>
+                {entry.user} <Text style={{ fontWeight: '500', color: theme.textSecondary }}>{entry.action === 'claim' ? 'claimde' : 'gaf vrij'}</Text> {entry.cardName}
               </Text>
-              <Text style={{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }}>{formatTime(entry.timestamp)}</Text>
+              <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>{formatTime(entry.timestamp)}</Text>
             </View>
-            <View style={[s.historyBadge, { backgroundColor: entry.action === 'claim' ? theme.primaryLight : theme.successLight }]}>
-              <Text style={{ fontSize: 9, fontWeight: '800', color: entry.action === 'claim' ? theme.primary : theme.success, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                {entry.action === 'claim' ? 'Claim' : 'Vrij'}
-              </Text>
+            <View style={[s.historyBadge, { backgroundColor: entry.action === 'claim' ? NEXUM.ink : '#22915a' }]}>
+              <Text style={{ color: '#fff', fontSize: 9, fontWeight: '800', letterSpacing: 1 }}>{entry.action === 'claim' ? 'CLAIM' : 'VRIJ'}</Text>
             </View>
           </View>
         ))
@@ -410,48 +442,53 @@ const ProfileTab = ({ userName, loginTime, theme }) => {
   }, [userName]);
 
   const statCards = [
-    { iconName: 'card-outline', label: 'Totaal claims', value: `${stats.totalClaims}`, color: theme.primary },
-    { iconName: 'star-outline', label: 'Favoriete kaart', value: stats.favoriteCard, color: theme.warning || '#f59e0b' },
-    { iconName: 'time-outline', label: 'Gem. duur', value: stats.avgDurationMs > 0 ? fmtDuration(stats.avgDurationMs) : '-', color: theme.success },
-    { iconName: 'trophy-outline', label: 'Ranking', value: rank > 0 ? `#${rank}` : '-', color: theme.primary },
+    { iconName: 'card-outline', label: 'Totaal claims', value: `${stats.totalClaims}`, color: NEXUM.pink },
+    { iconName: 'star-outline', label: 'Favoriete kaart', value: stats.favoriteCard, color: NEXUM.orange },
+    { iconName: 'time-outline', label: 'Gem. duur', value: stats.avgDurationMs > 0 ? fmtDuration(stats.avgDurationMs) : '-', color: NEXUM.purple },
+    { iconName: 'trophy-outline', label: 'Ranking', value: rank > 0 ? `#${rank}` : '-', color: NEXUM.pink },
   ];
 
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
-      <View style={[s.profileHeader, { backgroundColor: theme.card }]}>
-        <View style={[s.profileAvatar, { backgroundColor: theme.primary }]}>
-          <Ionicons name="person" size={24} color="#fff" />
+    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+      <View style={[s.profileHeader, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <View style={s.profileAvatar}>
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange, borderRadius: 18 }]} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.85, borderRadius: 18 }]} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.55, borderRadius: 18 }]} />
+          <Text style={{ color: '#fff', fontWeight: '900', fontSize: 22 }}>{userName[0]}</Text>
         </View>
-        <View>
-          <Text style={{ fontSize: 20, fontWeight: '800', color: theme.text }}>{userName}</Text>
-          <Text style={{ fontSize: 13, color: theme.textSecondary }}>Ingelogd om {loginTime?.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: theme.textSecondary, fontSize: 10, letterSpacing: 2, fontWeight: '700' }}>INGELOGD</Text>
+          <Text style={{ color: theme.text, fontSize: 20, fontWeight: '900', marginTop: 2 }}>{userName}</Text>
+          <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2 }}>
+            Sinds {loginTime?.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+          </Text>
         </View>
       </View>
 
       <View style={s.statsGrid}>
         {statCards.map(stat => (
-          <View key={stat.label} style={[s.statCard, { backgroundColor: theme.card }]}>
-            <Ionicons name={stat.iconName} size={20} color={stat.color} style={{ marginBottom: 8 }} />
-            <Text style={{ fontSize: 11, color: theme.textSecondary }}>{stat.label}</Text>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: theme.text, marginTop: 2 }}>{stat.value}</Text>
+          <View key={stat.label} style={[s.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <View style={{ width: 34, height: 34, borderRadius: 12, backgroundColor: `${stat.color}22`, justifyContent: 'center', alignItems: 'center', marginBottom: 10 }}>
+              <Ionicons name={stat.iconName} size={18} color={stat.color} />
+            </View>
+            <Text style={{ color: theme.textSecondary, fontSize: 11, letterSpacing: 1, fontWeight: '700', textTransform: 'uppercase' }}>{stat.label}</Text>
+            <Text style={{ color: theme.text, fontSize: 20, fontWeight: '900', marginTop: 4 }}>{stat.value}</Text>
           </View>
         ))}
       </View>
 
-      <View style={[s.recentCard, { backgroundColor: theme.card }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}><Ionicons name="trending-up-outline" size={16} color={theme.primary} /><Text style={[s.sectionTitle, { color: theme.text }]}>Recente claims</Text></View>
+      <View style={[s.recentCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Text style={{ color: theme.text, fontSize: 15, fontWeight: '900', marginBottom: 8 }}>Recente claims</Text>
         {stats.recentClaims.length === 0 ? (
-          <Text style={{ textAlign: 'center', color: theme.textSecondary, paddingVertical: 20 }}>Nog geen claims</Text>
+          <Text style={{ color: theme.textSecondary, fontSize: 12, paddingVertical: 12 }}>Nog geen claims</Text>
         ) : (
-          stats.recentClaims.map(entry => (
-            <View key={entry.id} style={[s.recentRow, { borderBottomColor: theme.border }]}>
-              <View>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.text }}>{entry.cardName}</Text>
-                <Text style={{ fontSize: 11, color: theme.textSecondary }}>
-                  {new Date(entry.timestamp).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                </Text>
-              </View>
-              <Text style={{ fontSize: 14 }}>🎫</Text>
+          stats.recentClaims.map((entry, i) => (
+            <View key={entry.id || i} style={[s.recentRow, { borderBottomColor: theme.border }]}>
+              <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600' }}>{entry.cardName}</Text>
+              <Text style={{ color: theme.textSecondary, fontSize: 11 }}>
+                {new Date(entry.timestamp).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              </Text>
             </View>
           ))
         )}
@@ -511,18 +548,18 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
         await saveClaim(cardKey, userName);
         await addHistoryEntry(userName, cardKey, 'claim');
         if (adminUser && wasClaimedBy && wasClaimedBy !== userName) {
-          await sendNotification(`⚠️ Admin Override: ${cardNames[cardKey]}`, `Admin ${userName} heeft ${cardNames[cardKey]} overgenomen van ${wasClaimedBy}.`);
+          await sendNotification(`Admin Override: ${cardNames[cardKey]}`, `Admin ${userName} heeft ${cardNames[cardKey]} overgenomen van ${wasClaimedBy}.`);
         } else {
-          await sendNotification(`${cardNames[cardKey]} geclaimd!`, `${userName} heeft ${cardNames[cardKey]} geclaimd.`);
+          await sendNotification(`${cardNames[cardKey]} geclaimd`, `${userName} heeft ${cardNames[cardKey]} geclaimd.`);
         }
       } else {
         const wasClaimedBy = claimedCards[cardKey]?.claimedBy;
         await saveClaim(cardKey, null);
         await addHistoryEntry(userName, cardKey, 'release');
         if (adminUser && wasClaimedBy && wasClaimedBy !== userName) {
-          await sendNotification(`⚠️ Admin Release: ${cardNames[cardKey]}`, `Admin ${userName} heeft ${cardNames[cardKey]} vrijgegeven (was van ${wasClaimedBy}).`);
+          await sendNotification(`Admin Release: ${cardNames[cardKey]}`, `Admin ${userName} heeft ${cardNames[cardKey]} vrijgegeven (was van ${wasClaimedBy}).`);
         } else {
-          await sendNotification(`${cardNames[cardKey]} beschikbaar!`, `${cardNames[cardKey]} is nu weer vrij.`);
+          await sendNotification(`${cardNames[cardKey]} beschikbaar`, `${cardNames[cardKey]} is nu weer vrij.`);
         }
       }
       await fetchClaims();
@@ -533,22 +570,22 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
   const availableCards = 4 - Object.values(claimedCards).filter(c => c?.status === 'geclaimd').length;
 
   if (fetchError) return (
-    <View style={[s.center, { backgroundColor: theme.bg, flex: 1 }]}>
-      <Text style={{ fontSize: 16, color: theme.primary, fontWeight: '700', marginBottom: 8 }}>! Verbindingsfout</Text>
-      <Text style={{ color: theme.textSecondary, marginBottom: 16, fontSize: 13 }}>{fetchError}</Text>
-      <TouchableOpacity onPress={fetchClaims} style={[s.btnSmall, { backgroundColor: theme.success }]}><Text style={s.btnText}>Opnieuw</Text></TouchableOpacity>
+    <View style={s.center}>
+      <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800', marginBottom: 8 }}>Verbindingsfout</Text>
+      <Text style={{ color: theme.textSecondary, marginBottom: 20 }}>{fetchError}</Text>
+      <GradientButton onPress={fetchClaims} style={{ paddingHorizontal: 24 }}>
+        <Text style={s.btnText}>Opnieuw proberen</Text>
+      </GradientButton>
     </View>
   );
 
   return (
-    <View style={{ flex: 1 }}>
+    <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
       {/* Zoomed image modal */}
       <Modal visible={!!zoomedImage} transparent animationType="fade" onRequestClose={() => setZoomedImage(null)}>
         <TouchableWithoutFeedback onPress={() => setZoomedImage(null)}>
           <View style={[s.modalBg, { backgroundColor: theme.overlay }]}>
-            <ScrollView maximumZoomScale={4} minimumZoomScale={1} contentContainerStyle={s.center}>
-              <Image source={{ uri: zoomedImage }} style={s.zoomedImg} resizeMode="contain" />
-            </ScrollView>
+            <Image source={{ uri: zoomedImage }} style={s.zoomedImg} resizeMode="contain" />
           </View>
         </TouchableWithoutFeedback>
       </Modal>
@@ -557,66 +594,68 @@ const DashboardTab = ({ userName, loginTime, onLogout, theme }) => {
       <Modal visible={!!confirmAction} transparent animationType="fade" onRequestClose={() => setConfirmAction(null)}>
         <View style={[s.modalBg, { backgroundColor: theme.overlay }]}>
           <View style={[s.confirmCard, { backgroundColor: theme.card }]}>
-            <Text style={{ fontSize: 17, fontWeight: '800', color: theme.text, marginBottom: 8 }}>
+            <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900', marginBottom: 6 }}>
               {confirmAction?.type === 'claim' ? 'Kaart claimen' : 'Kaart vrijgeven'}
             </Text>
-            <Text style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 20 }}>
+            <Text style={{ color: theme.textSecondary, fontSize: 14, marginBottom: 20 }}>
               Wil je {cardNames[confirmAction?.cardKey]} {confirmAction?.type === 'claim' ? 'claimen' : 'vrijgeven'}?
             </Text>
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TouchableOpacity onPress={() => setConfirmAction(null)} style={[s.confirmBtn, { backgroundColor: theme.inputBg }]}>
-                <Text style={{ fontWeight: '700', color: theme.text, fontSize: 14 }}>Annuleren</Text>
+              <TouchableOpacity onPress={() => setConfirmAction(null)} style={[s.confirmBtn, { backgroundColor: theme.inputBg, borderWidth: 1, borderColor: theme.border }]}>
+                <Text style={{ color: theme.text, fontWeight: '800' }}>Annuleren</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={executeAction} disabled={loading}
-                style={[s.confirmBtn, { backgroundColor: confirmAction?.type === 'claim' ? theme.primary : theme.success, opacity: loading ? 0.5 : 1 }]}>
-                <Text style={{ fontWeight: '700', color: '#fff', fontSize: 14 }}>{loading ? 'Bezig...' : 'Bevestigen'}</Text>
-              </TouchableOpacity>
+              <GradientButton onPress={executeAction} style={{ flex: 1, paddingVertical: 12 }}>
+                <Text style={s.btnText}>{loading ? 'Bezig...' : 'Bevestigen'}</Text>
+              </GradientButton>
             </View>
           </View>
         </View>
       </Modal>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
-        {/* Status bar */}
-        <View style={{ padding: 12, paddingHorizontal: 16 }}>
-          <View style={[s.statusBar, { backgroundColor: theme.card }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Ionicons name="time-outline" size={13} color={theme.textSecondary} /><Text style={{ fontSize: 12, color: theme.textSecondary }}>{loginTime?.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}</Text></View>
-              <View style={{ width: 1, height: 14, backgroundColor: theme.border }} />
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Ionicons name="card-outline" size={13} color={theme.textSecondary} /><Text style={{ fontSize: 12, color: theme.textSecondary }}><Text style={{ fontWeight: '800', color: theme.text }}>{availableCards}</Text> / 4 vrij</Text></View>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: theme.success }} />
-              <Text style={{ fontSize: 11, color: theme.success, fontWeight: '700' }}>Live</Text>
-            </View>
+      {/* Status bar */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+        <View style={[s.statusBar, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View>
+            <Text style={{ color: theme.textSecondary, fontSize: 10, letterSpacing: 1.5, fontWeight: '700' }}>INGELOGD</Text>
+            <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900', marginTop: 2 }}>
+              {loginTime?.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          </View>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ color: NEXUM.pink, fontSize: 26, fontWeight: '900', lineHeight: 28 }}>{availableCards}</Text>
+            <Text style={{ color: theme.textSecondary, fontSize: 9, letterSpacing: 1.5, fontWeight: '700', marginTop: 2 }}>VAN 4 VRIJ</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#22c55e' }} />
+            <Text style={{ color: '#16a34a', fontSize: 10, letterSpacing: 1.5, fontWeight: '800' }}>LIVE</Text>
           </View>
         </View>
+      </View>
 
-        {/* Cards */}
-        <View style={s.cardsGrid}>
-          {['card1', 'card2', 'card3', 'card4'].map(key => (
-            <Card
-              key={key}
-              cardName={cardNames[key]}
-              cardKey={key}
-              cardImage={cardImages[key]}
-              claimedStatus={claimedCards[key]?.status}
-              claimedBy={claimedCards[key]?.claimedBy}
-              claimedAt={claimedCards[key]?.claimedAt}
-              userName={userName}
-              onPress={a => handleAction(a, key)}
-              onZoom={setZoomedImage}
-              now={now}
-              theme={theme}
-            />
-          ))}
-        </View>
+      {/* Cards */}
+      <View style={s.cardsGrid}>
+        {['card1', 'card2', 'card3', 'card4'].map(key => (
+          <Card
+            key={key}
+            cardName={cardNames[key]}
+            cardKey={key}
+            cardImage={cardImages[key]}
+            claimedStatus={claimedCards[key]?.status}
+            claimedBy={claimedCards[key]?.claimedBy}
+            claimedAt={claimedCards[key]?.claimedAt}
+            userName={userName}
+            onPress={a => handleAction(a, key)}
+            onZoom={setZoomedImage}
+            now={now}
+            theme={theme}
+          />
+        ))}
+      </View>
 
-        <Text style={{ textAlign: 'center', fontSize: 10, color: theme.textSecondary + '60', letterSpacing: 1.5, textTransform: 'uppercase', marginTop: 8, fontWeight: '600' }}>
-          Powered by Nexum Development
-        </Text>
-      </ScrollView>
-    </View>
+      <Text style={{ textAlign: 'center', color: theme.textSecondary, fontSize: 11, marginTop: 8 }}>
+        Powered by Nexum Development
+      </Text>
+    </ScrollView>
   );
 };
 
@@ -693,23 +732,44 @@ const ParkingApp = () => {
 
   if (!loggedIn) {
     return (
-      <View style={[s.loginContainer, { backgroundColor: theme.primary }]}>
-        <StatusBar barStyle="light-content" />
-        <Animated.View style={[s.loginCard, { backgroundColor: theme.card, opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }] }]}>
-          <Image source={{ uri: 'https://media.glassdoor.com/sqll/1075020/jvh-gaming-en-entertainment-squarelogo-1533909494473.png' }} style={s.logo} />
-          <Text style={[s.loginTitle, { color: theme.text }]}>Jack's Parking</Text>
-          <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 16 }}>Voer je toegangscode in</Text>
-          <TextInput value={code} onChangeText={setCode} placeholder="Toegangscode" placeholderTextColor={theme.textSecondary}
-            style={[s.input, { backgroundColor: theme.inputBg, color: theme.text, borderColor: theme.border }]} keyboardType="numeric" secureTextEntry />
-          <TouchableOpacity onPress={handleLogin} style={[s.loginBtn, { backgroundColor: theme.primary }]}><Text style={s.loginBtnText}>Inloggen →</Text></TouchableOpacity>
-          {biometricSupported && hasSavedCode && (
-            <TouchableOpacity onPress={handleFaceIDLogin} style={[s.faceIdBtn, { backgroundColor: theme.inputBg }]}><Text style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}>Inloggen met Face ID</Text></TouchableOpacity>
-          )}
+      <View style={[s.appContainer, { backgroundColor: theme.bg }]}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+        <Blobs dark={isDark} />
+        <Animated.View style={[s.loginContainer, { opacity: fadeAnim }]}>
+          <View style={[s.loginCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <View style={s.logoWrap}>
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange, borderRadius: 20 }]} />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.85, borderRadius: 20 }]} />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.55, borderRadius: 20 }]} />
+              <Text style={{ color: '#fff', fontWeight: '900', fontSize: 30 }}>J</Text>
+            </View>
+            <Text style={{ color: theme.textSecondary, fontSize: 10, letterSpacing: 3, fontWeight: '800', marginBottom: 6 }}>JACK'S CASINO</Text>
+            <Text style={[s.loginTitle, { color: theme.text }]}>Jack's Parking</Text>
+            <Text style={{ color: theme.textSecondary, fontSize: 13, marginTop: 4, marginBottom: 24 }}>Voer je toegangscode in</Text>
+            <TextInput
+              value={code}
+              onChangeText={setCode}
+              placeholder="Code"
+              placeholderTextColor={theme.textSecondary}
+              secureTextEntry
+              keyboardType="number-pad"
+              style={[s.input, { backgroundColor: theme.inputBg, color: theme.text, borderColor: theme.border }]}
+            />
+            <GradientButton onPress={handleLogin} style={{ width: '100%', paddingVertical: 15 }}>
+              <Text style={s.btnText}>Inloggen</Text>
+            </GradientButton>
+            {biometricSupported && hasSavedCode && (
+              <TouchableOpacity onPress={handleFaceIDLogin} style={[s.faceIdBtn, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
+                <Ionicons name="scan-outline" size={16} color={theme.text} style={{ marginRight: 8 }} />
+                <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>Inloggen met Face ID</Text>
+              </TouchableOpacity>
+            )}
+            <View style={{ alignItems: 'center', marginTop: 24 }}>
+              <Text style={{ color: theme.textSecondary, fontSize: 10, letterSpacing: 2, fontWeight: '700' }}>JVH GAMING AND ENTERTAINMENT</Text>
+              <Text style={{ color: theme.textSecondary, fontSize: 10, marginTop: 6 }}>Powered by Nexum Development</Text>
+            </View>
+          </View>
         </Animated.View>
-        <View style={{ alignItems: 'center', marginTop: 30 }}>
-          <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>JVH Gaming & Entertainment</Text>
-          <Text style={{ color: 'rgba(255,255,255,0.15)', fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase', marginTop: 4, fontWeight: '600' }}>Powered by Nexum Development</Text>
-        </View>
       </View>
     );
   }
@@ -717,25 +777,40 @@ const ParkingApp = () => {
   return (
     <View style={[s.appContainer, { backgroundColor: theme.bg }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <Blobs dark={isDark} />
+
       {/* Header */}
       <View style={[s.header, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Image source={{ uri: 'https://media.glassdoor.com/sqll/1075020/jvh-gaming-en-entertainment-squarelogo-1533909494473.png' }} style={s.headerLogo} />
+          <View style={s.headerLogo}>
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange, borderRadius: 10 }]} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.85, borderRadius: 10 }]} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.55, borderRadius: 10 }]} />
+            <Text style={{ color: '#fff', fontWeight: '900', fontSize: 14 }}>J</Text>
+          </View>
           <View>
-            <Text style={{ fontSize: 13, fontWeight: '800', color: theme.text }}>Jack's Parking</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Text style={{ fontSize: 11, color: theme.textSecondary }}>{userName}</Text>
-              {isAdmin(userName) && <Text style={{ fontSize: 10, fontWeight: '800', color: theme.primary, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: theme.primaryLight, borderRadius: 4 }}>👑 ADMIN</Text>}
-            </View>
+            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '900', letterSpacing: -0.3 }}>Jack's Parking</Text>
+            <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 1 }}>{userName}</Text>
           </View>
         </View>
-        <View style={{ flexDirection: 'row', gap: 4 }}>
-          <TouchableOpacity onPress={toggleTheme} style={s.headerBtn}><Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={18} color={theme.text} /></TouchableOpacity>
-          <TouchableOpacity onPress={handleLogout} style={s.headerBtn}><Ionicons name="log-out-outline" size={18} color={theme.text} /></TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {isAdmin(userName) && (
+            <View style={s.adminBadge}>
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange, borderRadius: 999 }]} />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.85, borderRadius: 999 }]} />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.55, borderRadius: 999 }]} />
+              <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }}>ADMIN</Text>
+            </View>
+          )}
+          <TouchableOpacity onPress={toggleTheme} style={[s.headerBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={16} color={theme.text} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleLogout} style={[s.headerBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Ionicons name="log-out-outline" size={16} color={theme.text} />
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Tab content */}
       {activeTab === 'dashboard' && <DashboardTab userName={userName} loginTime={loginTime} onLogout={handleLogout} theme={theme} />}
       {activeTab === 'history' && <HistoryTab userName={userName} theme={theme} />}
       {activeTab === 'profile' && <ProfileTab userName={userName} loginTime={loginTime} theme={theme} />}
@@ -747,71 +822,86 @@ const ParkingApp = () => {
 
 // ====================== STYLES ======================
 const s = StyleSheet.create({
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   appContainer: { flex: 1 },
+
+  // Blobs
+  blob: { position: 'absolute', width: 280, height: 280, borderRadius: 999 },
+
   // Login
   loginContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  loginCard: { width: '100%', maxWidth: 380, borderRadius: 24, padding: 28, alignItems: 'center' },
-  logo: { width: 72, height: 72, borderRadius: 18, marginBottom: 16 },
-  loginTitle: { fontSize: 22, fontWeight: '800', marginBottom: 4, letterSpacing: -0.3 },
-  input: { width: '100%', borderRadius: 16, padding: 14, fontSize: 15, marginBottom: 12, borderWidth: 1 },
-  loginBtn: { width: '100%', paddingVertical: 14, borderRadius: 16, alignItems: 'center' },
-  loginBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  faceIdBtn: { width: '100%', paddingVertical: 14, borderRadius: 16, alignItems: 'center', marginTop: 8 },
+  loginCard: { width: '100%', maxWidth: 400, borderRadius: 28, padding: 32, alignItems: 'center', borderWidth: 1,
+    shadowColor: NEXUM.pink, shadowOpacity: 0.15, shadowRadius: 40, shadowOffset: { width: 0, height: 20 }, elevation: 8 },
+  logoWrap: { width: 72, height: 72, borderRadius: 20, marginBottom: 20, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  loginTitle: { fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  input: { width: '100%', borderRadius: 16, padding: 16, fontSize: 16, marginBottom: 12, borderWidth: 1, textAlign: 'center', letterSpacing: 6, fontWeight: '800' },
+  faceIdBtn: { width: '100%', paddingVertical: 14, borderRadius: 16, alignItems: 'center', marginTop: 10, borderWidth: 1, flexDirection: 'row', justifyContent: 'center' },
+
   // Header
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 54 : 12, paddingBottom: 10, borderBottomWidth: 0.5 },
-  headerLogo: { width: 32, height: 32, borderRadius: 10 },
-  headerBtn: { padding: 8, borderRadius: 12 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 54 : 16, paddingBottom: 12, borderBottomWidth: 0.5 },
+  headerLogo: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  headerBtn: { padding: 8, borderRadius: 12, borderWidth: 1 },
+  adminBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
+
   // Bottom nav
   bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', borderTopWidth: 0.5, paddingBottom: Platform.OS === 'ios' ? 24 : 8 },
-  navItem: { flex: 1, alignItems: 'center', paddingTop: 10, gap: 3 },
-  navIndicator: { position: 'absolute', top: -0.5, width: 48, height: 2, borderRadius: 1 },
-  navLabel: { fontSize: 10, fontWeight: '700' },
+  navItem: { flex: 1, alignItems: 'center', paddingTop: 12, gap: 4 },
+  navIndicatorWrap: { position: 'absolute', top: 0, width: 48, height: 3, borderRadius: 2, overflow: 'hidden' },
+  navLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+
   // Status bar
-  statusBar: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  statusBar: { borderRadius: 20, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1 },
+
   // Cards
-  cardsGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 8, gap: 8, justifyContent: 'center' },
-  card: { width: (SCREEN_W - 40) / 2, borderRadius: 18, overflow: 'hidden', borderWidth: 1, marginBottom: 4 },
-  cardImgWrap: { width: '100%', aspectRatio: 16 / 9, overflow: 'hidden', position: 'relative' },
+  cardsGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 12, gap: 10, justifyContent: 'center' },
+  card: { width: (SCREEN_W - 34) / 2, borderRadius: 20, overflow: 'hidden', borderWidth: 1,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 2 },
+  cardImgWrap: { width: '100%', aspectRatio: 16 / 11, overflow: 'hidden', position: 'relative' },
   cardImg: { width: '100%', height: '100%', resizeMode: 'cover' },
-  cardOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 14, gap: 2 },
-  cardOverlayGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '30%', backgroundColor: 'rgba(0,0,0,0.08)' },
-  avatarCircle: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
-  badge: { position: 'absolute', top: 8, left: 8, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
-  badgeDot: { width: 5, height: 5, borderRadius: 3 },
-  badgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  cardOverlayGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '55%', backgroundColor: 'rgba(0,0,0,0.35)' },
+  badge: { position: 'absolute', top: 8, left: 8, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
+  badgeDot: { width: 6, height: 6, borderRadius: 3 },
+  badgeText: { fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
+  cardOwner: { position: 'absolute', bottom: 8, left: 10, right: 10 },
+  cardOwnerLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 9, letterSpacing: 1, fontWeight: '700' },
+  cardOwnerName: { color: '#fff', fontSize: 14, fontWeight: '900' },
   cardContent: { padding: 12 },
-  cardTitle: { fontSize: 14, fontWeight: '800', letterSpacing: -0.2 },
+  cardTitle: { fontSize: 14, fontWeight: '900', letterSpacing: -0.2 },
   progressBg: { height: 4, borderRadius: 2, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 2 },
-  timerLabel: { fontSize: 10 },
-  cardBtns: { flexDirection: 'row', gap: 6, marginTop: 10 },
-  btnClaim: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center' },
-  btnRelease: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center' },
-  btnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  btnSmall: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, alignItems: 'center' },
+  progressFill: { height: '100%', borderRadius: 2, overflow: 'hidden' },
+  timerLabel: { fontSize: 10, fontWeight: '600' },
+  cardBtns: { flexDirection: 'row', gap: 6, marginTop: 12 },
+
+  // Buttons
+  gradBtn: { paddingVertical: 11, borderRadius: 999, alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    shadowColor: NEXUM.pink, shadowOpacity: 0.35, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
+  btnRelease: { flex: 1, paddingVertical: 11, borderRadius: 999, alignItems: 'center' },
+  btnText: { color: '#fff', fontSize: 12, fontWeight: '900', letterSpacing: 0.3 },
+
   // Modals
-  modalBg: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  modalBg: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   zoomedImg: { width: SCREEN_W, height: SCREEN_H * 0.8 },
-  confirmCard: { width: '85%', maxWidth: 360, borderRadius: 20, padding: 24 },
-  confirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 14, alignItems: 'center' },
-  lbRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, marginBottom: 4 },
+  confirmCard: { width: '100%', maxWidth: 380, borderRadius: 24, padding: 24 },
+  confirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 999, alignItems: 'center' },
+
   // History
-  historyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, marginBottom: 6 },
-  historyIcon: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  historyBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  historyRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 18, marginBottom: 8, borderWidth: 1 },
+  historyIcon: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  historyBadge: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
+
   // Profile
-  profileHeader: { borderRadius: 18, padding: 20, flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 14 },
-  profileAvatar: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  profileHeader: { borderRadius: 22, padding: 20, flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 14, borderWidth: 1 },
+  profileAvatar: { width: 58, height: 58, borderRadius: 18, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
-  statCard: { width: (SCREEN_W - 52) / 2, borderRadius: 16, padding: 16 },
-  recentCard: { borderRadius: 18, padding: 16 },
+  statCard: { width: (SCREEN_W - 52) / 2, borderRadius: 18, padding: 16, borderWidth: 1 },
+  recentCard: { borderRadius: 20, padding: 18, borderWidth: 1 },
   recentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 0.5 },
+
   // Misc
-  sectionTitle: { fontSize: 17, fontWeight: '800' },
-  filterWrap: { flexDirection: 'row', borderRadius: 10, padding: 3 },
-  filterBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  filterText: { fontSize: 12, fontWeight: '700' },
+  sectionTitle: { fontSize: 20, fontWeight: '900', letterSpacing: -0.4 },
+  filterWrap: { flexDirection: 'row', borderRadius: 999, padding: 3, borderWidth: 1 },
+  filterBtn: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999 },
+  filterText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
 });
 
 export default ParkingApp;
