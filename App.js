@@ -20,6 +20,7 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // ====================== CONFIG ======================
 const SUPABASE_URL = 'https://itgwuhvchxcskwelelrm.supabase.co';
@@ -84,6 +85,17 @@ const darkTheme = {
   loginGradient: ['#0d0d12', '#2a0a1e', '#0d0d12'],
   isDark: true,
 };
+
+
+// True gradient using expo-linear-gradient
+const GradientBg = ({ radius = 0, style }) => (
+  <LinearGradient
+    colors={[NEXUM.orange, NEXUM.pink, NEXUM.purple]}
+    start={{ x: 0, y: 0 }}
+    end={{ x: 1, y: 1 }}
+    style={[StyleSheet.absoluteFill, { borderRadius: radius }, style]}
+  />
+);
 
 // ====================== HELPERS ======================
 const Alert = {
@@ -264,9 +276,7 @@ const saveClaim = async (cardKey, claimedBy) => {
 const GradientButton = ({ onPress, disabled, style, children }) => (
   <TouchableOpacity onPress={onPress} disabled={disabled} activeOpacity={0.85}
     style={[s.gradBtn, disabled && { opacity: 0.35 }, style]}>
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange, borderRadius: 999 }]} />
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.85, borderRadius: 999 }]} />
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.55, borderRadius: 999 }]} />
+    <GradientBg radius={999} />
     {children}
   </TouchableOpacity>
 );
@@ -315,9 +325,7 @@ const Card = ({ cardName, cardKey, cardImage, claimedStatus, claimedBy, claimedA
           <>
             <View style={[s.progressBg, { backgroundColor: theme.inputBg, marginTop: 8 }]}>
               <View style={[s.progressFill, { width: `${progressPct}%` }]}>
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange }]} />
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.75 }]} />
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.5 }]} />
+                <GradientBg radius={0} />
               </View>
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
@@ -367,9 +375,7 @@ const BottomNav = ({ activeTab, onTabChange, theme }) => {
           <TouchableOpacity key={tab.id} onPress={() => onTabChange(tab.id)} style={s.navItem} activeOpacity={0.7}>
             {active && (
               <View style={s.navIndicatorWrap}>
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange }]} />
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.85 }]} />
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.55 }]} />
+                <GradientBg radius={0} />
               </View>
             )}
             <Ionicons name={active ? tab.iconNameActive : tab.iconName} size={22} color={active ? NEXUM.pink : theme.textSecondary} />
@@ -465,9 +471,7 @@ const ProfileTab = ({ userName, loginTime, theme }) => {
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
       <View style={[s.profileHeader, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <View style={s.profileAvatar}>
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange, borderRadius: 18 }]} />
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.85, borderRadius: 18 }]} />
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.55, borderRadius: 18 }]} />
+          <GradientBg radius={18} />
           <Text style={{ color: '#fff', fontWeight: '900', fontSize: 22 }}>{userName[0]}</Text>
         </View>
         <View style={{ flex: 1 }}>
@@ -715,9 +719,7 @@ const LeaderboardTab = ({ userName, theme }) => {
                 <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>{r.count} claim{r.count === 1 ? '' : 's'}</Text>
               </View>
               <View style={s.historyBadge}>
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange, borderRadius: 8 }]} />
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.85, borderRadius: 8 }]} />
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.55, borderRadius: 8 }]} />
+                <GradientBg radius={8} />
                 <Text style={{ color: '#fff', fontSize: 12, fontWeight: '900' }}>{r.count}</Text>
               </View>
             </View>
@@ -807,9 +809,7 @@ const ParkingApp = () => {
         <Animated.View style={[s.loginContainer, { opacity: fadeAnim }]}>
           <View style={[s.loginCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <View style={s.logoWrap}>
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange, borderRadius: 20 }]} />
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.85, borderRadius: 20 }]} />
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.55, borderRadius: 20 }]} />
+              <GradientBg radius={20} />
               <Text style={{ color: '#fff', fontWeight: '900', fontSize: 30 }}>J</Text>
             </View>
             <Text style={{ color: theme.textSecondary, fontSize: 10, letterSpacing: 3, fontWeight: '800', marginBottom: 6 }}>JACK'S CASINO</Text>
@@ -852,9 +852,7 @@ const ParkingApp = () => {
       <View style={[s.header, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <View style={s.headerLogo}>
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange, borderRadius: 10 }]} />
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.85, borderRadius: 10 }]} />
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.55, borderRadius: 10 }]} />
+            <GradientBg radius={10} />
             <Text style={{ color: '#fff', fontWeight: '900', fontSize: 14 }}>J</Text>
           </View>
           <View>
@@ -865,9 +863,7 @@ const ParkingApp = () => {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           {isAdmin(userName) && (
             <View style={s.adminBadge}>
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.orange, borderRadius: 999 }]} />
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.pink, opacity: 0.85, borderRadius: 999 }]} />
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: NEXUM.purple, opacity: 0.55, borderRadius: 999 }]} />
+              <GradientBg radius={999} />
               <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }}>ADMIN</Text>
             </View>
           )}
